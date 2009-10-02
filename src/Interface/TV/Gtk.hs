@@ -19,6 +19,8 @@ import Control.Monad (when)
 import Data.IORef
 import Data.Maybe (fromMaybe)
 
+import Data.Time (getCurrentTime,utctDayTime)
+
 import Data.Title
 import Data.Pair
 import Data.Lambda
@@ -209,12 +211,39 @@ textI start = primMkI $ \ refresh ->
 
 textO :: Out String
 textO = primMkO $
-        do entry <- entryNew
-           return (toWidget entry, entrySetText entry)
+  do entry <- entryNew
+     return (toWidget entry, entrySetText entry)
 
 -- textO = primMkO $
 --         do lab <- labelNew Nothing
 --            return (toWidget lab, labelSetText lab)
+
+-- | A clock that reports time in seconds and updates at the given period
+-- (in seconds).
+clockDtI :: R -> In R
+clockDtI period = primMkI $ \ refresh ->
+  do start    <- time
+     _timeout <- timeoutAddFull (refresh >> return True)
+                  priorityDefaultIdle (round (period * 1000))
+     w <- vBoxNew True 0    -- size 0 box
+     return (toWidget w, subtract start <$> time)
+
+
+-- TODO: I have to deactive the clock after a run finishes or it will keep running when gtk
+-- starts up again.  Probably requires changing the type of MkI and MkO to
+-- yield a clean-up action.
+--      _timeoutRemove timeout
+
+
+-- | A clock that updates every 1/60 second
+clockI :: In R
+clockI = clockDtI (1/60)
+
+-- Get the time since midnight, in seconds
+time :: IO R
+time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
+
+
 
 
 {-
