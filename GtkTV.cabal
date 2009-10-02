@@ -18,13 +18,15 @@ License-File:        COPYING
 Stability:           experimental
 build-type:          Simple
 
+extra-source-files:
+                       examples/test
+
 Library
   hs-Source-Dirs:      src
   Extensions:
-  Build-Depends:       base<5, TV, gtk
+  Build-Depends:       base<5, time, gtk, TypeCompose, TV
   Exposed-Modules:
                        Interface.TV.Gtk
-                       
   ghc-options:         -Wall
 
 --  ghc-prof-options:    -prof -auto-all 
