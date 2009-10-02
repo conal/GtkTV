@@ -37,32 +37,32 @@ type Out = Output MkI MkO
   -- OPrim :: snk a -> Output src snk a
 
 
--- Make a input UI.  Takes a change call-back and produces a widget and a
--- polling operation.
+-- Make a input UI.
 newtype MkI  a = MkI { unMkI :: MkI' a }
 
--- Representation type for 'MkI'
-type MkI' a = IO () -> IO (Widget, IO a)
+-- Representation type for 'MkI'.  Takes a change call-back and produces a widget and a
+-- polling operation and a clean-up action.
+type MkI' a = IO () -> IO (Widget, IO a, IO ())
 
--- Make an output UI.  Give a widget and a way to send it new info to disply.
+-- Make an output UI.
 newtype MkO a = MkO { unMkO :: MkO' a }
 
--- Representation type for 'MkO'
-type MkO' a = IO (Widget, OI a)
+-- Representation type for 'MkO'.  Give a widget and a way to send it new
+-- info to disply and a clean-up action.
+type MkO' a = IO (Widget, OI a, IO ())
 
 -- | Sink of information
 type OI a = a -> IO ()
-
 
 -- | Add post-processing
 result :: (b -> b') -> ((a -> b) -> (a -> b'))
 result = (.)
 
 
-makeUI :: Out a -> String -> OI a
-makeUI out name a = do
+runOut :: Out a -> String -> a -> IO ()
+runOut out name a = do
   initGUI
-  (wid, sink) <- unMkO (output out)
+  (wid,sink,cleanup) <- unMkO (output out)
   sink a
   window <- windowNew
   set window [ windowDefaultWidth   := 200 -- , windowDefaultHeight := 200
@@ -71,7 +71,7 @@ makeUI out name a = do
              , windowFocusOnMap     := True       -- helpful?
              , windowTitle          := name
              ]
-  onDestroy window mainQuit
+  onDestroy window (cleanup >> mainQuit)
   widgetShowAll window
   mainGUI
   return ()
@@ -89,36 +89,36 @@ boxer = (result.result.fmap) toBox
 instance Pair MkI where
   pair (MkI ia) (MkI ob) = MkI $ \ refresh ->
     do box <- boxNew Horizontal True 10
-       (wa,geta) <- ia refresh
-       (wb,getb) <- ob refresh
+       (wa,geta,cleana) <- ia refresh
+       (wb,getb,cleanb) <- ob refresh
        set box [ containerChild := wa , containerChild := wb ]
-       return (toWidget box, liftA2 (,) geta getb)
+       return (toWidget box, liftA2 (,) geta getb, cleana >> cleanb)
 
 instance Pair MkO where
   pair (MkO oa) (MkO ob) = MkO $
     do box <- boxNew Horizontal True 10
-       (wa,snka) <- oa
-       (wb,snkb) <- ob
+       (wa,snka,cleana) <- oa
+       (wb,snkb,cleanb) <- ob
        set box [ containerChild := wa , containerChild := wb ]
-       return (toWidget box, \ (a,b) -> snka a >> snkb b)
+       return (toWidget box, \ (a,b) -> snka a >> snkb b, cleana >> cleanb)
 
 instance Title_f MkI where
   title_f str (MkI ia) = MkI $ \ refresh ->
-    do (widget,geta) <- ia refresh
+    do (widget,geta,cleana) <- ia refresh
        frame  <- frameNew
        set frame [ frameLabel      := str
                  -- , frameShadowType := ShadowEtchedOut
                  , containerChild  := widget ]
-       return (toWidget frame, geta)
+       return (toWidget frame, geta, cleana)
 
 instance Title_f MkO where
   title_f str (MkO oa) = MkO $
-   do (widget,sink) <- oa
+   do (widget,sink,clean) <- oa
       frame  <- frameNew
       set frame [ frameLabel      := str
                 -- , frameShadowType := ShadowEtchedOut
                 , containerChild  := widget ]
-      return (toWidget frame, sink)
+      return (toWidget frame, sink, clean)
 
 instance Lambda MkI MkO where
   lambda (MkI ia) (MkO ob) = MkO $
@@ -127,11 +127,12 @@ instance Lambda MkI MkO where
         let update = do f <- readIORef reff
                         a <- geta   -- note loop
                         snkb (f a)
-        (wa,geta) <- ia update
-        (wb,snkb) <- ob
+        (wa,geta,cleana) <- ia update
+        (wb,snkb,cleanb) <- ob
         set box [ containerChild := wa , containerChild := wb ]
         return ( toWidget box
-               , \ f -> writeIORef reff f >> update )
+               , \ f -> writeIORef reff f >> update
+               , cleana >> cleanb)
 
 
 primMkI :: MkI' a -> In a
@@ -169,7 +170,7 @@ sliderGIn toD fromD step digits
          let getter = fromD <$> get w rangeValue
          onRangeChangeValue w (\ _ x -> changeTo getter (fromD x) >> return False)
          -- TODO: experiment with return False vs True
-         return (toWidget w, getter)
+         return (toWidget w, getter, return ())
 
 
 toggleI :: Bool -> In Bool
@@ -177,12 +178,12 @@ toggleI start = primMkI $ \ refresh ->
   do w <- checkButtonNew
      toggleButtonSetActive w start
      onToggled w refresh
-     return (toWidget w, toggleButtonGetActive w)
+     return (toWidget w, toggleButtonGetActive w, return ())
 
 toggleO :: Out Bool
 toggleO = primMkO $
   do w <- checkButtonNew
-     return (toWidget w, toggleButtonSetActive w)
+     return (toWidget w, toggleButtonSetActive w, return ())
 
 mkFileName :: FilePath -> In FilePath
 mkFileName start = primMkI $ \ refresh ->
@@ -191,7 +192,8 @@ mkFileName start = primMkI $ \ refresh ->
      onCurrentFolderChanged w refresh
      -- fileChooserGetFilename w >>= print    -- testing
      return ( toWidget w
-            , fromMaybe start <$> fileChooserGetFilename w )
+            , fromMaybe start <$> fileChooserGetFilename w
+            , return () )
 
 -- mkTextureI :: GlTexture -> In GlTexture
 -- mkTextureI = error "mkTexture: not yet implemented"
@@ -206,13 +208,13 @@ textI start = primMkI $ \ refresh ->
   do entry <- entryNew
      entrySetText entry start
      onEntryActivate entry refresh
-     return (toWidget entry, entryGetText entry)
+     return (toWidget entry, entryGetText entry, return ())
 
 
 textO :: Out String
 textO = primMkO $
   do entry <- entryNew
-     return (toWidget entry, entrySetText entry)
+     return (toWidget entry, entrySetText entry, return ())
 
 -- textO = primMkO $
 --         do lab <- labelNew Nothing
@@ -222,17 +224,16 @@ textO = primMkO $
 -- (in seconds).
 clockDtI :: R -> In R
 clockDtI period = primMkI $ \ refresh ->
-  do start    <- time
-     _timeout <- timeoutAddFull (refresh >> return True)
+  do start   <- time
+     timeout <- timeoutAddFull (refresh >> return True)
                   priorityDefaultIdle (round (period * 1000))
      w <- vBoxNew True 0    -- size 0 box
-     return (toWidget w, subtract start <$> time)
+     return (toWidget w, subtract start <$> time, timeoutRemove timeout)
 
 
--- TODO: I have to deactive the clock after a run finishes or it will keep running when gtk
--- starts up again.  Probably requires changing the type of MkI and MkO to
--- yield a clean-up action.
---      _timeoutRemove timeout
+-- Deactivating the clock's timeout during clean-up prevents it from
+-- running when gtk starts up again.  Particularly useful in ghci, where
+-- restarting gtk is commonplace.
 
 
 -- | A clock that updates every 1/60 second
