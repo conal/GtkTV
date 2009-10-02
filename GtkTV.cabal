@@ -13,7 +13,7 @@ Maintainer:          conal@conal.net
 Homepage:            http://haskell.org/haskellwiki/GtkTV
 Package-Url:         http://code.haskell.org/~conal/code/GtkTV
 Copyright:           (c) 2009 by Conal Elliott
-License:             GPL
+License:             BSD3
 License-File:        COPYING
 Stability:           experimental
 build-type:          Simple
@@ -24,7 +24,7 @@ extra-source-files:
 Library
   hs-Source-Dirs:      src
   Extensions:
-  Build-Depends:       base<5, time, gtk, TypeCompose, TV
+  Build-Depends:       base<5, time, gtk, TypeCompose>=0.6.5, TV
   Exposed-Modules:
                        Interface.TV.Gtk
   ghc-options:         -Wall
