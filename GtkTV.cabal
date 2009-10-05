@@ -1,5 +1,5 @@
 Name:                GtkTV
-Version:             0.0.0
+Version:             0.0.1
 Cabal-Version:       >= 1.2
 Synopsis:            
 Category:            Gtk-based GUIs for Tangible Values
@@ -24,7 +24,7 @@ extra-source-files:
 Library
   hs-Source-Dirs:      src
   Extensions:
-  Build-Depends:       base<5, time, gtk, TypeCompose>=0.6.5, TV
+  Build-Depends:       base<5, time, gtk, TypeCompose>=0.6.7, TV
   Exposed-Modules:
                        Interface.TV.Gtk
   ghc-options:         -Wall
