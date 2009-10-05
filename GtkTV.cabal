@@ -1,8 +1,8 @@
 Name:                GtkTV
-Version:             0.0.1
+Version:             0.0.2
 Cabal-Version:       >= 1.2
-Synopsis:            
-Category:            Gtk-based GUIs for Tangible Values
+Synopsis:            Gtk-based GUIs for Tangible Values
+Category:            User Interfaces
 Description:
   GtkTV is a very small library that extends the TV (tangible value)
   framework with graphical user interfaces, using gtk2hs.
