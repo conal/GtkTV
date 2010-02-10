@@ -1,5 +1,5 @@
 Name:                GtkTV
-Version:             0.0.2
+Version:             0.0.3
 Cabal-Version:       >= 1.2
 Synopsis:            Gtk-based GUIs for Tangible Values
 Category:            User Interfaces
@@ -7,12 +7,12 @@ Description:
   GtkTV is a very small library that extends the TV (tangible value)
   framework with graphical user interfaces, using gtk2hs.
   .
-  &#169; 2007 by Conal Elliott; BSD3 license.
+  &#169; 2009, 2010 by Conal Elliott; BSD3 license.
 Author:              Conal Elliott
 Maintainer:          conal@conal.net
 Homepage:            http://haskell.org/haskellwiki/GtkTV
 Package-Url:         http://code.haskell.org/~conal/code/GtkTV
-Copyright:           (c) 2009 by Conal Elliott
+Copyright:           (c) 2009, 2010 by Conal Elliott
 License:             BSD3
 License-File:        COPYING
 Stability:           experimental
