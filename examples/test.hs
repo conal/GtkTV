@@ -16,8 +16,8 @@ import Data.Lambda (lambda) -- or use oLambda
 import Data.Pair   (pair)   -- or use iPair, oPair
 import Data.Title  (title)  -- or use iTitle, oTitle
 
-import Interface.TV
-import Interface.TV.Gtk
+import Interface.TV (tv,runTV)
+import Interface.TV.Gtk (In,Out,R,toggleI,textO,sliderRI,sliderII)
 
 
 {--------------------------------------------------------------------
@@ -25,21 +25,21 @@ import Interface.TV.Gtk
 --------------------------------------------------------------------}
 
 i1 :: In R
-i1 = iTitle "size" $ sliderRI (0,10) 3
+i1 = title "size" $ sliderRI (0,10) 3
 
 i2 :: In Bool
-i2 = iTitle "happy" $ toggleI False
+i2 = title "happy" $ toggleI False
 
 i3 :: In (R, Bool)
-i3 = iPair i1 i2
+i3 = pair i1 i2
 
 i4 :: In Int
-i4 = iTitle "cookies" $ sliderII (0,10) 5
+i4 = title "cookies" $ sliderII (0,10) 5
 
--- testI i = runOut "test" (oLambda i textO) show
+-- testI i = runOut "test" (lambda i textO) show
 
 testI :: Show a => In a -> IO ()
-testI i = runTV (tv (oLambda i textO) show)
+testI i = runTV (tv (lambda i textO) show)
 
 t1,t2,t3,t4,t5 :: IO ()
 t1 = testI i1
