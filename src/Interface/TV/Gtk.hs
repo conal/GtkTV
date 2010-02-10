@@ -12,7 +12,12 @@
 -- Gtk-based GUIs in the TV (tangible value) framework
 ----------------------------------------------------------------------
 
-module Interface.TV.Gtk where
+module Interface.TV.Gtk
+  ( -- * TV type specializations
+    In, Out, GTV, runGTV
+    -- * UI primitives
+  , R, sliderRI, sliderII, toggleI, toggleO, textI, textO, clockI, fileNameI
+  ) where
 
 import Control.Applicative (liftA2,(<$>))
 import Control.Monad (when)
@@ -25,31 +30,49 @@ import Data.Title
 import Data.Pair
 import Data.Lambda
 
+import qualified Control.Compose as C
+import Control.Compose (ToOI(..))
+
 import Interface.TV.Input
 import Interface.TV.Output
+import Interface.TV.Tangible
 
 import Graphics.UI.Gtk -- as Gtk
 
+
+{--------------------------------------------------------------------
+    TV type specializations
+--------------------------------------------------------------------}
+
 type In  = Input  MkI
 type Out = Output MkI MkO
+type GTV = TV MkI MkO
 
-  -- IPrim :: src a -> Input src a
-  -- OPrim :: snk a -> Output src snk a
+-- Type specialization
+runGTV :: GTV a -> IO ()
+runGTV = runTV
 
+
+{--------------------------------------------------------------------
+    Representations
+--------------------------------------------------------------------}
 
 -- Make a input UI.
-newtype MkI  a = MkI { unMkI :: MkI' a }
+newtype MkI  a = MkI (MkI' a)
 
 -- Representation type for 'MkI'.  Takes a change call-back and produces a widget and a
 -- polling operation and a clean-up action.
 type MkI' a = IO () -> IO (Widget, IO a, IO ())
 
 -- Make an output UI.
-newtype MkO a = MkO { unMkO :: MkO' a }
+newtype MkO a = MkO (MkO' a)
 
 -- Representation type for 'MkO'.  Give a widget and a way to send it new
--- info to disply and a clean-up action.
+-- info to display and a clean-up action.
 type MkO' a = IO (Widget, OI a, IO ())
+
+-- Currently, the clean-up actions are created only by clockDtI, and just
+-- propagated by the other combinators.
 
 -- | Sink of information
 type OI a = a -> IO ()
@@ -58,11 +81,13 @@ type OI a = a -> IO ()
 result :: (b -> b') -> ((a -> b) -> (a -> b'))
 result = (.)
 
+-- runOut :: String -> Out a -> a -> IO ()
+-- runOut name out a = runMkO name (output out) a
 
-runOut :: Out a -> String -> a -> IO ()
-runOut out name a = do
+runMkO :: String -> MkO a -> OI a
+runMkO name (MkO mko') a = do
   initGUI
-  (wid,sink,cleanup) <- unMkO (output out)
+  (wid,sink,cleanup) <- mko'
   sink a
   window <- windowNew
   set window [ windowDefaultWidth   := 200 -- , windowDefaultHeight := 200
@@ -75,6 +100,14 @@ runOut out name a = do
   widgetShowAll window
   mainGUI
   return ()
+
+instance ToOI MkO where
+  toOI mkO = C.Flip (runMkO "GtkTV" mkO)
+
+
+{--------------------------------------------------------------------
+    UI primitives
+--------------------------------------------------------------------}
 
 
 data Orient = Horizontal | Vertical deriving (Read,Show)
@@ -185,8 +218,8 @@ toggleO = primMkO $
   do w <- checkButtonNew
      return (toWidget w, toggleButtonSetActive w, return ())
 
-mkFileName :: FilePath -> In FilePath
-mkFileName start = primMkI $ \ refresh ->
+fileNameI :: FilePath -> In FilePath
+fileNameI start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
      fileChooserSetFilename w start
      onCurrentFolderChanged w refresh

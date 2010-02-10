@@ -4,7 +4,7 @@
 -- |
 -- Module      :  test
 -- Copyright   :  (c) Conal Elliott 2009
--- License     :  GPL-3
+-- License     :  BSD3
 -- 
 -- Maintainer  :  conal@conal.net
 -- Stability   :  experimental
@@ -14,6 +14,7 @@
 
 import Data.Lambda (lambda) -- or use oLambda
 import Data.Pair   (pair)   -- or use iPair, oPair
+import Data.Title  (title)  -- or use iTitle, oTitle
 
 import Interface.TV
 import Interface.TV.Gtk
@@ -35,8 +36,10 @@ i3 = iPair i1 i2
 i4 :: In Int
 i4 = iTitle "cookies" $ sliderII (0,10) 5
 
+-- testI i = runOut "test" (oLambda i textO) show
+
 testI :: Show a => In a -> IO ()
-testI i = runOut (oLambda i textO) "test" show
+testI i = runTV (tv (oLambda i textO) show)
 
 t1,t2,t3,t4,t5 :: IO ()
 t1 = testI i1
@@ -48,13 +51,13 @@ t5 = testI (pair i1 i4)
 -- t5 = runUI TextureIn "Gtk.hs" print
 -- t6 = runUI TextureIn "/home/conal/Pictures/phone pics/Image002.jpg" print
 
--- WORKING HERE: curried function.
-
 o6 :: Out (R -> Bool -> String)
 o6 = lambda i1 $ lambda i2 $ textO
 
 t6 :: IO ()
-t6 = runOut o6 "currying"  (\ a b -> show (a,b))
+-- t6 = runOut "currying" o6  (\ a b -> show (a,b))
+
+t6 = runTV $ tv (title "currying" o6)  (curry show)
 
 {-
 
