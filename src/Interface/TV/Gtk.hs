@@ -14,9 +14,10 @@
 
 module Interface.TV.Gtk
   ( -- * TV type specializations
-    In, Out, GTV, runGTV
+    In, Out, GTV, gtv, runGTV
     -- * UI primitives
-  , R, sliderRI, sliderII, toggleI, toggleO, textI, textO, clockI, fileNameI
+  , R, sliderRI, sliderII, clockI, fileNameI
+  , module Interface.TV
   ) where
 
 import Control.Applicative (liftA2,(<$>))
@@ -31,11 +32,14 @@ import Data.Pair
 import Data.Lambda
 
 import qualified Control.Compose as C
-import Control.Compose (ToOI(..))
+import Control.Compose (ToOI(..),Cofunctor(..))
 
-import Interface.TV.Input
-import Interface.TV.Output
-import Interface.TV.Tangible
+import Interface.TV
+
+-- import Interface.TV.Input
+-- import Interface.TV.Output
+-- import Interface.TV.Tangible
+-- import Interface.TV.Common
 
 import Graphics.UI.Gtk -- as Gtk
 
@@ -48,7 +52,11 @@ type In  = Input  MkI
 type Out = Output MkI MkO
 type GTV = TV MkI MkO
 
--- Type specialization
+-- Type specialization of 'tv'
+gtv :: Out a -> a -> GTV a
+gtv = tv
+
+-- Type specialization of 'runTV'
 runGTV :: GTV a -> IO ()
 runGTV = runTV
 
@@ -76,6 +84,49 @@ type MkO' a = IO (Widget, OI a, IO ())
 
 -- | Sink of information
 type OI a = a -> IO ()
+
+
+instance Functor MkI where
+  fmap f (MkI h) = MkI h'
+    where
+      h' refresh = do (wid,poll,clean) <- h refresh
+                      return (wid, fmap f poll, clean)
+
+instance Cofunctor MkO where
+  cofmap f (MkO io) = MkO io'
+   where
+     io' = do (wid,sink,cleanup) <- io
+              return (wid,sink . f,cleanup)
+
+-- Note that Functor & Cofunctor are isomorphic to a standard form.
+-- Consider redefining MkI' and MkO' accordingly.  See how other instances
+-- work out.
+
+instance CommonIns MkI where
+  getString start = MkI $ \ refresh ->
+    do entry <- entryNew
+       entrySetText entry start
+       onEntryActivate entry refresh
+       return (toWidget entry, entryGetText entry, return ())
+  getRead = getReadF  -- thanks to MkI Functor
+  getBool start = MkI $ \ refresh ->
+    do w <- checkButtonNew
+       toggleButtonSetActive w start
+       onToggled w refresh
+       return (toWidget w, toggleButtonGetActive w, return ())
+
+-- TODO: refactor textI, toggleI.  Or eliminate them, and just use
+-- stringIn, boolIn in their place.
+
+instance CommonOuts MkO where
+  putString = MkO $
+    do entry <- entryNew
+       return (toWidget entry, entrySetText entry, return ())
+  putShow = putShowC  -- thanks to MkO Cofunctor
+  putBool = MkO $
+    do w <- checkButtonNew
+       return (toWidget w, toggleButtonSetActive w, return ())
+
 
 -- | Add post-processing
 result :: (b -> b') -> ((a -> b) -> (a -> b'))
@@ -171,8 +222,8 @@ instance Lambda MkI MkO where
 primMkI :: MkI' a -> In a
 primMkI = iPrim . MkI
 
-primMkO :: MkO' a -> Out a
-primMkO = oPrim . MkO
+-- primMkO :: MkO' a -> Out a
+-- primMkO = oPrim . MkO
 
 type R = Float
 
@@ -205,19 +256,6 @@ sliderGIn toD fromD step digits
          -- TODO: experiment with return False vs True
          return (toWidget w, getter, return ())
 
-
-toggleI :: Bool -> In Bool
-toggleI start = primMkI $ \ refresh ->
-  do w <- checkButtonNew
-     toggleButtonSetActive w start
-     onToggled w refresh
-     return (toWidget w, toggleButtonGetActive w, return ())
-
-toggleO :: Out Bool
-toggleO = primMkO $
-  do w <- checkButtonNew
-     return (toWidget w, toggleButtonSetActive w, return ())
-
 fileNameI :: FilePath -> In FilePath
 fileNameI start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
@@ -235,23 +273,6 @@ fileNameI start = primMkI $ \ refresh ->
 -- mkTexture _ _ _ = error "mkTexture: not BaseG"
 
 -- onEntryActivate :: EntryClass ec => ec -> IO () -> IO (ConnectId ec)
-
-textI :: String -> In String
-textI start = primMkI $ \ refresh ->
-  do entry <- entryNew
-     entrySetText entry start
-     onEntryActivate entry refresh
-     return (toWidget entry, entryGetText entry, return ())
-
-
-textO :: Out String
-textO = primMkO $
-  do entry <- entryNew
-     return (toWidget entry, entrySetText entry, return ())
-
--- textO = primMkO $
---         do lab <- labelNew Nothing
---            return (toWidget lab, labelSetText lab)
 
 -- | A clock that reports time in seconds and updates at the given period
 -- (in seconds).

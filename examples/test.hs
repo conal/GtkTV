@@ -16,8 +16,10 @@ import Data.Lambda (lambda) -- or use oLambda
 import Data.Pair   (pair)   -- or use iPair, oPair
 import Data.Title  (title)  -- or use iTitle, oTitle
 
-import Interface.TV (tv,runTV)
-import Interface.TV.Gtk (In,Out,R,toggleI,textO,sliderRI,sliderII)
+-- import Interface.TV (tv,runTV,boolIn,stringOut,oLambda)
+-- import Interface.TV.Gtk (In,Out,gtv,R,sliderRI,sliderII)
+
+import Interface.TV.Gtk
 
 
 {--------------------------------------------------------------------
@@ -28,7 +30,7 @@ i1 :: In R
 i1 = title "size" $ sliderRI (0,10) 3
 
 i2 :: In Bool
-i2 = title "happy" $ toggleI False
+i2 = title "happy" $ boolIn False
 
 i3 :: In (R, Bool)
 i3 = pair i1 i2
@@ -36,10 +38,16 @@ i3 = pair i1 i2
 i4 :: In Int
 i4 = title "cookies" $ sliderII (0,10) 5
 
--- testI i = runOut "test" (lambda i textO) show
+-- testI i = runOut "test" (lambda i stringOut) show
 
 testI :: Show a => In a -> IO ()
-testI i = runTV (tv (lambda i textO) show)
+
+-- testI i = runTV (tv (lambda i (stringOut :: Out String)) show)
+
+-- The explicit typing is unfortunate here.  Alternatively, use gtv or runGTV:
+
+testI i = runGTV (tv (oLambda i stringOut) show)
+
 
 t1,t2,t3,t4,t5 :: IO ()
 t1 = testI i1
@@ -52,7 +60,7 @@ t5 = testI (pair i1 i4)
 -- t6 = runUI TextureIn "/home/conal/Pictures/phone pics/Image002.jpg" print
 
 o6 :: Out (R -> Bool -> String)
-o6 = lambda i1 $ lambda i2 $ textO
+o6 = lambda i1 $ lambda i2 $ stringOut
 
 t6 :: IO ()
 -- t6 = runOut "currying" o6  (\ a b -> show (a,b))
