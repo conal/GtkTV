@@ -16,7 +16,7 @@ module Interface.TV.Gtk
   ( -- * TV type specializations
     In, Out, GTV, gtv, runGTV
     -- * UI primitives
-  , R, sliderRI, sliderII, clockI, fileNameI
+  , R, sliderRIn, sliderIIn, clockIn, fileNameIn
   , module Interface.TV
   ) where
 
@@ -230,11 +230,11 @@ type R = Float
 -- TODO: Consider using R == Double (for constant folding), while really
 -- being float on the GLSL side.
 
-sliderRI :: (R,R) -> R -> In R
-sliderRI = sliderGIn realToFrac realToFrac 0.01 5
+sliderRIn :: (R,R) -> R -> In R
+sliderRIn = sliderGIn realToFrac realToFrac 0.01 5
 
-sliderII :: (Int,Int) -> Int -> In Int
-sliderII = sliderGIn fromIntegral round 1 0
+sliderIIn :: (Int,Int) -> Int -> In Int
+sliderIIn = sliderGIn fromIntegral round 1 0
 
 -- Generalized slider.  Gtk's scaling widgets work with Double, so this
 -- adapter takes some initial params for conversion.  Only fires when a
@@ -256,8 +256,8 @@ sliderGIn toD fromD step digits
          -- TODO: experiment with return False vs True
          return (toWidget w, getter, return ())
 
-fileNameI :: FilePath -> In FilePath
-fileNameI start = primMkI $ \ refresh ->
+fileNameIn :: FilePath -> In FilePath
+fileNameIn start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
      fileChooserSetFilename w start
      onCurrentFolderChanged w refresh
@@ -291,8 +291,8 @@ clockDtI period = primMkI $ \ refresh ->
 
 
 -- | A clock that updates every 1/60 second
-clockI :: In R
-clockI = clockDtI (1/60)
+clockIn :: In R
+clockIn = clockDtI (1/60)
 
 -- Get the time since midnight, in seconds
 time :: IO R

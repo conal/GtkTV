@@ -27,7 +27,7 @@ import Interface.TV.Gtk
 --------------------------------------------------------------------}
 
 i1 :: In R
-i1 = title "size" $ sliderRI (0,10) 3
+i1 = title "size" $ sliderRIn (0,10) 3
 
 i2 :: In Bool
 i2 = title "happy" $ boolIn False
@@ -36,7 +36,7 @@ i3 :: In (R, Bool)
 i3 = pair i1 i2
 
 i4 :: In Int
-i4 = title "cookies" $ sliderII (0,10) 5
+i4 = title "cookies" $ sliderIIn (0,10) 5
 
 -- testI i = runOut "test" (lambda i stringOut) show
 
@@ -46,7 +46,7 @@ testI :: Show a => In a -> IO ()
 
 -- The explicit typing is unfortunate here.  Alternatively, use gtv or runGTV:
 
-testI i = runGTV (tv (oLambda i stringOut) show)
+testI i = runGTV (tv (oLambda i showOut) id)
 
 
 t1,t2,t3,t4,t5 :: IO ()
@@ -56,30 +56,24 @@ t3 = testI i3
 t4 = testI i4
 t5 = testI (pair i1 i4)
 
--- t5 = runUI TextureIn "Gtk.hs" print
--- t6 = runUI TextureIn "/home/conal/Pictures/phone pics/Image002.jpg" print
-
 o6 :: Out (R -> Bool -> String)
 o6 = lambda i1 $ lambda i2 $ stringOut
 
 t6 :: IO ()
--- t6 = runOut "currying" o6  (\ a b -> show (a,b))
-
 t6 = runTV $ tv (title "currying" o6)  (curry show)
+
+-- t6 = runOut "currying" o6  (\ a b -> show (a,b))
 
 {-
 
 t7 = testI TextureIn 0
 
-{-
 tryTex str = do allInit 
                 loadTexture' str >>= print
                 IL.showErrors
                 showGLErrors
 
-t8 = tryTex "/home/conal/Haskell/gadget/src/marble-256.png"
-t9 = tryTex "/home/conal/cabal/nehe-tuts-0.1.1/Data/NeHe.bmp"
--}
+t8 = tryTex "marble-256.png"
 
 main = t6
 

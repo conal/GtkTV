@@ -1,5 +1,5 @@
 Name:                GtkTV
-Version:             0.1.0
+Version:             0.1.1
 Cabal-Version:       >= 1.2
 Synopsis:            Gtk-based GUIs for Tangible Values
 Category:            User Interfaces
