@@ -16,8 +16,7 @@ module Interface.TV.Gtk
   ( -- * TV type specializations
     In, Out, GTV, gtv, runGTV
     -- * UI primitives
-  , R, sliderRIn, sliderIIn, clockIn, fileNameIn
-  , renderO, renderGray
+  , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut
   , module Interface.TV
   ) where
 
@@ -123,9 +122,6 @@ instance CommonIns MkI where
        toggleButtonSetActive w start
        onToggled w refresh
        return (toWidget w, toggleButtonGetActive w, return ())
-
--- TODO: refactor textI, toggleI.  Or eliminate them, and just use
--- stringIn, boolIn in their place.
 
 instance CommonOuts MkO where
   putString = MkO $
@@ -327,8 +323,8 @@ time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
 
 -- | Render output, given a rendering action.  Handles all set-up.
 -- Intended as a basis for functional graphics. 
-renderO :: Out Action
-renderO = primMkO $
+renderOut :: Out Action
+renderOut = primMkO $
   do glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
                              , GLModeDouble, GLModeAlpha ]
      canvas <- glDrawingAreaNew glconfig
@@ -367,22 +363,3 @@ renderO = primMkO $
           return True
      -- putStrLn "returning from renderO setup"
      return (toWidget canvas, display, return ())
-
--- Now a test renderer.
-
-renderGray :: Sink Float
-renderGray x' = do -- putStrLn "renderGray"
-                   color (Color4 x x x x)
-                   square
- where
-   x = realToFrac x' :: GLfloat
-
-square :: Action
-square = renderPrimitive Quads $  -- start drawing a polygon (4 sided)
-           do vert (-o)   o  -- top left
-              vert   o    o  -- top right
-              vert   o  (-o) -- bottom right
-              vert (-o) (-o) -- bottom left
- where
-   vert x y = vertex (Vertex3 x y (0 :: GLfloat))
-   o = 0.9

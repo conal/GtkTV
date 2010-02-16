@@ -25,6 +25,7 @@ import Data.Title  (title)  -- or use iTitle, oTitle
 -- import Interface.TV (tv,runTV,boolIn,stringOut,oLambda)
 -- import Interface.TV.Gtk (In,Out,gtv,R,sliderRI,sliderII)
 
+import Graphics.Rendering.OpenGL hiding (Sink,get)
 
 {--------------------------------------------------------------------
     Misc
@@ -144,11 +145,31 @@ shoppingPrU = uncurryA $$ shoppingU
     Rendering examples
 --------------------------------------------------------------------}
 
+-- Test renderer.
+
+renderGray :: Sink Float
+renderGray x' = do -- putStrLn "renderGray"
+                   color (Color4 x x x x)
+                   square
+ where
+   x = realToFrac x' :: GLfloat
+
+square :: Action
+square = renderPrimitive Quads $  -- start drawing a polygon (4 sided)
+           do vert (-o)   o  -- top left
+              vert   o    o  -- top right
+              vert   o  (-o) -- bottom right
+              vert (-o) (-o) -- bottom left
+ where
+   vert x y = vertex (Vertex3 x y (0 :: GLfloat))
+   o = 0.9
+
+
 iGray :: In R
 iGray = title "gray level" $ sliderRIn (0,1) 0.5
 
 o7 :: Out (R -> Action)
-o7 = lambda iGray renderO
+o7 = lambda iGray renderOut
 
 tv7 :: GTV (R -> Action)
 tv7 = tv o7 renderGray
@@ -161,10 +182,10 @@ osc x = (sin x + 1) / 2
 -- osc = (/ 2) . (+1) . sin
 
 tv8 :: GTV (R -> Action)
-tv8 = tv (lambda clockIn renderO) (renderGray . osc)
+tv8 = tv (lambda clockIn renderOut) (renderGray . osc)
 
 tv9 :: GTV (R -> (R,Action))
-tv9 = tv (lambda clockIn (title "osc" showOut `pair` renderO)) ((id &&& renderGray) . osc)
+tv9 = tv (lambda clockIn (title "osc" showOut `pair` renderOut)) ((id &&& renderGray) . osc)
 
 tv10 :: GTV (R -> (Action,Action))
 tv10 = result dupA $$ tv7
