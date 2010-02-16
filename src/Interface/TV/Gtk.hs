@@ -17,7 +17,7 @@ module Interface.TV.Gtk
     In, Out, GTV, gtv, runGTV
     -- * UI primitives
   , R, sliderRIn, sliderIIn, clockIn, fileNameIn
-  , fooGL
+  , renderO, renderGray
   , module Interface.TV
   ) where
 
@@ -44,10 +44,11 @@ import Interface.TV
 
 import Graphics.UI.Gtk hiding (Action)
 
-import qualified Graphics.UI.Gtk.OpenGL as GtkGL
-import qualified Graphics.UI.Gtk as Gtk
+import Graphics.UI.Gtk.OpenGL as GtkGL
+import Graphics.UI.Gtk as Gtk hiding (Action)
 -- TODO: Try dropping the 'qualified'
 import Graphics.Rendering.OpenGL as GL hiding (Sink,get)
+
 
 {--------------------------------------------------------------------
     TV type specializations
@@ -57,11 +58,11 @@ type In  = Input  MkI
 type Out = Output MkI MkO
 type GTV = TV MkI MkO
 
--- Type specialization of 'tv'
+-- | Type specialization of 'tv'
 gtv :: Out a -> a -> GTV a
 gtv = tv
 
--- Type specialization of 'runTV'
+-- | Type specialization of 'runTV'
 runGTV :: GTV a -> IO ()
 runGTV = runTV
 
@@ -156,10 +157,9 @@ result = (.)
 runMkO :: String -> MkO a -> Sink a
 runMkO name (MkO mko') a = do
   initGUI
-  GtkGL.initGL -- okay to multi-init?
+  GtkGL.initGL
   -- putStrLn "past initGL"
   (wid,sink,cleanup) <- mko'
-  sink a
   window <- windowNew
   set window [ windowDefaultWidth   := 200
           -- , windowDefaultHeight  := 200
@@ -169,8 +169,13 @@ runMkO name (MkO mko') a = do
              , windowTitle          := name
              ]
   onDestroy window (cleanup >> mainQuit)
+  -- putStrLn "showing windowO"
   widgetShowAll window
   -- Glew.glewInit                         --TODO: try moving up.
+  -- putStrLn "initial sink"
+  -- Initial sink.  Must come after show-all for the GLDrawingArea.
+  sink a
+  -- putStrLn "about to mainGUI"
   mainGUI
   return ()
 
@@ -194,7 +199,7 @@ boxer = (result.result.fmap) toBox
 
 instance Pair MkI where
   pair (MkI ia) (MkI ob) = MkI $ \ refresh ->
-    do box <- boxNew Horizontal True 10
+    do box <- boxNew Horizontal False 10
        (wa,geta,cleana) <- ia refresh
        (wb,getb,cleanb) <- ob refresh
        set box [ containerChild := wa , containerChild := wb ]
@@ -202,7 +207,7 @@ instance Pair MkI where
 
 instance Pair MkO where
   pair (MkO oa) (MkO ob) = MkO $
-    do box <- boxNew Horizontal True 10
+    do box <- boxNew Horizontal False 10
        (wa,snka,cleana) <- oa
        (wb,snkb,cleanb) <- ob
        set box [ containerChild := wa , containerChild := wb ]
@@ -228,7 +233,7 @@ instance Title_f MkO where
 
 instance Lambda MkI MkO where
   lambda (MkI ia) (MkO ob) = MkO $
-    mdo box  <- boxNew Vertical True 10
+    mdo box  <- boxNew Vertical False 10
         reff <- newIORef (error "mkLambda: no function yet")
         let update = do f <- readIORef reff
                         a <- geta   -- note loop
@@ -246,8 +251,8 @@ primMkI = iPrim . MkI
 
 -- Currently unused
 
--- primMkO :: MkO' a -> Out a
--- primMkO = oPrim . MkO
+primMkO :: MkO' a -> Out a
+primMkO = oPrim . MkO
 
 type R = Float
 
@@ -256,6 +261,8 @@ type R = Float
 
 sliderRIn :: (R,R) -> R -> In R
 sliderRIn = sliderGIn realToFrac realToFrac 0.01 5
+
+-- What does the step argument mean (0.01)?
 
 sliderIIn :: (Int,Int) -> Int -> In Int
 sliderIIn = sliderGIn fromIntegral round 1 0
@@ -327,48 +334,70 @@ time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
     GtkGL stuff
 --------------------------------------------------------------------}
 
-fooGL :: IO (Action -> Action)
-fooGL =
-  do glconfig <- GtkGL.glConfigNew [GtkGL.GLModeRGBA,
-                                    GtkGL.GLModeDepth,
-                                    GtkGL.GLModeDouble,
-                                    GtkGL.GLModeAlpha ]
-     canvas <- GtkGL.glDrawingAreaNew glconfig
+mkCanvas :: IO GLDrawingArea
+mkCanvas =
+  do glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
+                             , GLModeDouble, GLModeAlpha ]
+     canvas <- glDrawingAreaNew glconfig
      -- putStrLn "made canvas"
-     Gtk.widgetSetSizeRequest canvas 600 600
+     widgetSetSizeRequest canvas 300 300
      -- Initialise some GL setting just before the canvas first gets shown
      -- (We can't initialise these things earlier since the GL resources that
      -- we are using wouldn't heve been setup yet)
      -- TODO experiment with moving some of these steps.
-     Gtk.onRealize canvas $ GtkGL.withGLDrawingArea canvas $ \_ ->
+     onRealize canvas $ withGLDrawingArea canvas $ const $
        do -- setupMatrices  -- do elsewhere, e.g., runSurface
           depthFunc  $= Just Less
           drawBuffer $= BackBuffers
           clearColor $= Color4 0 0 0.2 1
-          -- experimental {
-          -- blendFunc $= (SrcAlpha, One)
-          -- blend     $= Enabled
-          -- GL.cullFace $= Just Back
-          -- } experimental
-          -- putStrLn "glEnableVSync"
-          -- glEnableVSync True
      -- Sync canvas size with GL viewport
-     Gtk.onExpose canvas $ \_ -> 
-       do (w',h') <- Gtk.widgetGetSize canvas
+     onExpose canvas $ \_ -> 
+       do (w',h') <- widgetGetSize canvas
           let w = fromIntegral w' ; h = fromIntegral h'
-          -- viewport $= ((Position 0 0), (Size (fromIntegral w) (fromIntegral h)))
           let dim :: GLsizei; start :: GLsizei -> GLint
               dim = w `min` h ; start s = fromIntegral ((s - dim) `div` 2)
-          viewport $= ((Position (start w) (start h)), (Size dim dim))
+          viewport $= (Position (start w) (start h), Size dim dim)
+          -- putStrLn "onExpose"
           return True
-     return $ display canvas
+     -- putStrLn "returning from mkCanvas"
+     return canvas
 
-display :: GtkGL.GLDrawingArea -> Sink Action
+display :: GLDrawingArea -> Sink Action
 display canvas render =
-  do GtkGL.withGLDrawingArea canvas $ \glwindow ->
-       do GL.clear [GL.DepthBuffer, GL.ColorBuffer]
+  do -- putStrLn "display"
+     withGLDrawingArea canvas $ \glwindow ->
+       do -- putStrLn "clearing"
+          clear [DepthBuffer, ColorBuffer]
           render
           -- glWaitVSync
           finish
-          GtkGL.glDrawableSwapBuffers glwindow
+          glDrawableSwapBuffers glwindow
      return ()
+
+
+-- | Render output, given a rendering action.  Handles all set-up.
+-- Intended as a basis for functional graphics. 
+renderO :: Out Action
+renderO = primMkO $ do canvas <- mkCanvas
+                       return (toWidget canvas, display canvas, return ())
+
+-- Now a test renderer.
+
+renderGray :: Sink Float
+renderGray x' = do -- putStrLn "renderGray"
+                   color (Color4 x x x x)
+                   square
+ where
+   x = realToFrac x' :: GLfloat
+
+square :: Action
+square = renderPrimitive Quads $  -- start drawing a polygon (4 sided)
+           do vert (-o)   o  -- top left
+              vert   o    o  -- top right
+              vert   o  (-o) -- bottom right
+              vert (-o) (-o) -- bottom left
+ where
+   vert x y = vertex (Vertex3 x y (0 :: GLfloat))
+   o = 0.9
+
+
