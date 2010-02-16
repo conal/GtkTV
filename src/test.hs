@@ -168,11 +168,8 @@ square = renderPrimitive Quads $  -- start drawing a polygon (4 sided)
 iGray :: In R
 iGray = title "gray level" $ sliderRIn (0,1) 0.5
 
-o7 :: Out (R -> Action)
-o7 = lambda iGray renderOut
-
 tv7 :: GTV (R -> Action)
-tv7 = tv o7 renderGray
+tv7 = tv (lambda iGray renderOut) renderGray
 
 -- Oscillate between 0 & 1
 osc :: Floating n => n -> n
@@ -181,11 +178,26 @@ osc x = (sin x + 1) / 2
 -- osc = (sin + 1) / 2
 -- osc = (/ 2) . (+1) . sin
 
+oscTV :: GTV (R -> R)
+oscTV = tv (lambda (sliderRIn (0,10) 0) (title "osc" defaultOut)) osc
+
+clockTV :: GTV (R -> R)
+clockTV = tv (lambda clockIn defaultOut) id
+
+clockOscTV :: GTV (R -> R)
+clockOscTV = clockTV ->| oscTV
+
 tv8 :: GTV (R -> Action)
 tv8 = tv (lambda clockIn renderOut) (renderGray . osc)
 
+tv8' :: GTV (R -> Action)
+-- tv8' = clockOscTV ->| tv7
+tv8' = clockTV ->| oscTV ->| tv7
+
 tv9 :: GTV (R -> (R,Action))
-tv9 = tv (lambda clockIn (title "osc" showOut `pair` renderOut)) ((id &&& renderGray) . osc)
+tv9 = tv (lambda clockIn (title "osc" defaultOut `pair` renderOut)) ((id &&& renderGray) . osc)
+
+-- TODO: refactor tv9
 
 tv10 :: GTV (R -> (Action,Action))
 tv10 = result dupA $$ tv7
