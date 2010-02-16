@@ -25,8 +25,12 @@ Library
   hs-Source-Dirs:      src
   Extensions:
   Build-Depends:       base<5, time, gtk, TypeCompose>=0.6.7, TV
+                     , OpenGL, gtkglext
   Exposed-Modules:
                        Interface.TV.Gtk
   ghc-options:         -Wall
 
 --  ghc-prof-options:    -prof -auto-all 
+
+-- The dependence on OpenGL and gtkglext is a bit unfortunate.  Maybe factor out the GL stuff to
+-- another package.  Take care to initialize.

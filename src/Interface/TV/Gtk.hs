@@ -17,6 +17,7 @@ module Interface.TV.Gtk
     In, Out, GTV, gtv, runGTV
     -- * UI primitives
   , R, sliderRIn, sliderIIn, clockIn, fileNameIn
+  , fooGL
   , module Interface.TV
   ) where
 
@@ -41,8 +42,12 @@ import Interface.TV
 -- import Interface.TV.Tangible
 -- import Interface.TV.Common
 
-import Graphics.UI.Gtk -- as Gtk
+import Graphics.UI.Gtk hiding (Action)
 
+import qualified Graphics.UI.Gtk.OpenGL as GtkGL
+import qualified Graphics.UI.Gtk as Gtk
+-- TODO: Try dropping the 'qualified'
+import Graphics.Rendering.OpenGL as GL hiding (Sink,get)
 
 {--------------------------------------------------------------------
     TV type specializations
@@ -62,6 +67,22 @@ runGTV = runTV
 
 
 {--------------------------------------------------------------------
+    Actions & info sinks
+--------------------------------------------------------------------}
+
+-- | Convenient shorthand
+type Action = IO ()
+
+-- | Sink of information
+type Sink a = a -> Action
+
+infixl 1 >+>  -- first guess
+-- | Combine sinks
+(>+>) :: Sink a -> Sink b -> Sink (a,b)
+(snka >+> snkb) (a,b) = snka a >> snkb b
+
+
+{--------------------------------------------------------------------
     Representations
 --------------------------------------------------------------------}
 
@@ -70,21 +91,17 @@ newtype MkI  a = MkI (MkI' a)
 
 -- Representation type for 'MkI'.  Takes a change call-back and produces a widget and a
 -- polling operation and a clean-up action.
-type MkI' a = IO () -> IO (Widget, IO a, IO ())
+type MkI' a = Action -> IO (Widget, IO a, Action)
 
 -- Make an output UI.
 newtype MkO a = MkO (MkO' a)
 
 -- Representation type for 'MkO'.  Give a widget and a way to send it new
 -- info to display and a clean-up action.
-type MkO' a = IO (Widget, OI a, IO ())
+type MkO' a = IO (Widget, Sink a, Action)
 
 -- Currently, the clean-up actions are created only by clockDtI, and just
 -- propagated by the other combinators.
-
--- | Sink of information
-type OI a = a -> IO ()
-
 
 instance Functor MkI where
   fmap f (MkI h) = MkI h'
@@ -128,27 +145,32 @@ instance CommonOuts MkO where
        return (toWidget w, toggleButtonSetActive w, return ())
 
 
--- | Add post-processing
+-- | Add post-processing.  (Could use 'fmap' instead, but 'result' is more
+-- specifically typed.)
 result :: (b -> b') -> ((a -> b) -> (a -> b'))
 result = (.)
 
--- runOut :: String -> Out a -> a -> IO ()
+-- runOut :: String -> Out a -> a -> Action
 -- runOut name out a = runMkO name (output out) a
 
-runMkO :: String -> MkO a -> OI a
+runMkO :: String -> MkO a -> Sink a
 runMkO name (MkO mko') a = do
   initGUI
+  GtkGL.initGL -- okay to multi-init?
+  -- putStrLn "past initGL"
   (wid,sink,cleanup) <- mko'
   sink a
   window <- windowNew
-  set window [ windowDefaultWidth   := 200 -- , windowDefaultHeight := 200
-             -- , containerBorderWidth := 10
+  set window [ windowDefaultWidth   := 200
+          -- , windowDefaultHeight  := 200
+          -- , containerBorderWidth := 10
              , containerChild       := wid
-             , windowFocusOnMap     := True       -- helpful?
+          -- , windowFocusOnMap     := True       -- helpful?
              , windowTitle          := name
              ]
   onDestroy window (cleanup >> mainQuit)
   widgetShowAll window
+  -- Glew.glewInit                         --TODO: try moving up.
   mainGUI
   return ()
 
@@ -184,7 +206,7 @@ instance Pair MkO where
        (wa,snka,cleana) <- oa
        (wb,snkb,cleanb) <- ob
        set box [ containerChild := wa , containerChild := wb ]
-       return (toWidget box, \ (a,b) -> snka a >> snkb b, cleana >> cleanb)
+       return (toWidget box, snka >+> snkb, cleana >> cleanb)
 
 instance Title_f MkI where
   title_f str (MkI ia) = MkI $ \ refresh ->
@@ -221,6 +243,8 @@ instance Lambda MkI MkO where
 
 primMkI :: MkI' a -> In a
 primMkI = iPrim . MkI
+
+-- Currently unused
 
 -- primMkO :: MkO' a -> Out a
 -- primMkO = oPrim . MkO
@@ -272,7 +296,7 @@ fileNameIn start = primMkI $ \ refresh ->
 -- mkTexture start refresh (BaseG oi) = do ...
 -- mkTexture _ _ _ = error "mkTexture: not BaseG"
 
--- onEntryActivate :: EntryClass ec => ec -> IO () -> IO (ConnectId ec)
+-- onEntryActivate :: EntryClass ec => ec -> Action -> IO (ConnectId ec)
 
 -- | A clock that reports time in seconds and updates at the given period
 -- (in seconds).
@@ -298,3 +322,53 @@ clockIn = clockDtI (1/60)
 time :: IO R
 time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
 
+
+{--------------------------------------------------------------------
+    GtkGL stuff
+--------------------------------------------------------------------}
+
+fooGL :: IO (Action -> Action)
+fooGL =
+  do glconfig <- GtkGL.glConfigNew [GtkGL.GLModeRGBA,
+                                    GtkGL.GLModeDepth,
+                                    GtkGL.GLModeDouble,
+                                    GtkGL.GLModeAlpha ]
+     canvas <- GtkGL.glDrawingAreaNew glconfig
+     -- putStrLn "made canvas"
+     Gtk.widgetSetSizeRequest canvas 600 600
+     -- Initialise some GL setting just before the canvas first gets shown
+     -- (We can't initialise these things earlier since the GL resources that
+     -- we are using wouldn't heve been setup yet)
+     -- TODO experiment with moving some of these steps.
+     Gtk.onRealize canvas $ GtkGL.withGLDrawingArea canvas $ \_ ->
+       do -- setupMatrices  -- do elsewhere, e.g., runSurface
+          depthFunc  $= Just Less
+          drawBuffer $= BackBuffers
+          clearColor $= Color4 0 0 0.2 1
+          -- experimental {
+          -- blendFunc $= (SrcAlpha, One)
+          -- blend     $= Enabled
+          -- GL.cullFace $= Just Back
+          -- } experimental
+          -- putStrLn "glEnableVSync"
+          -- glEnableVSync True
+     -- Sync canvas size with GL viewport
+     Gtk.onExpose canvas $ \_ -> 
+       do (w',h') <- Gtk.widgetGetSize canvas
+          let w = fromIntegral w' ; h = fromIntegral h'
+          -- viewport $= ((Position 0 0), (Size (fromIntegral w) (fromIntegral h)))
+          let dim :: GLsizei; start :: GLsizei -> GLint
+              dim = w `min` h ; start s = fromIntegral ((s - dim) `div` 2)
+          viewport $= ((Position (start w) (start h)), (Size dim dim))
+          return True
+     return $ display canvas
+
+display :: GtkGL.GLDrawingArea -> Sink Action
+display canvas render =
+  do GtkGL.withGLDrawingArea canvas $ \glwindow ->
+       do GL.clear [GL.DepthBuffer, GL.ColorBuffer]
+          render
+          -- glWaitVSync
+          finish
+          GtkGL.glDrawableSwapBuffers glwindow
+     return ()
