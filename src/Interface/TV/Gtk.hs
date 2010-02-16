@@ -28,26 +28,17 @@ import Data.Maybe (fromMaybe)
 
 import Data.Time (getCurrentTime,utctDayTime)
 
+import Graphics.UI.Gtk hiding (Action)
+import Graphics.UI.Gtk.OpenGL
+import Graphics.Rendering.OpenGL hiding (Sink,get)
+
+-- From TypeCompose
 import Data.Title
 import Data.Pair
 import Data.Lambda
-
-import qualified Control.Compose as C
-import Control.Compose (ToOI(..),Cofunctor(..))
+import Control.Compose (ToOI(..),Cofunctor(..),Flip(..))
 
 import Interface.TV
-
--- import Interface.TV.Input
--- import Interface.TV.Output
--- import Interface.TV.Tangible
--- import Interface.TV.Common
-
-import Graphics.UI.Gtk hiding (Action)
-
-import Graphics.UI.Gtk.OpenGL as GtkGL
-import Graphics.UI.Gtk as Gtk hiding (Action)
--- TODO: Try dropping the 'qualified'
-import Graphics.Rendering.OpenGL as GL hiding (Sink,get)
 
 
 {--------------------------------------------------------------------
@@ -157,7 +148,7 @@ result = (.)
 runMkO :: String -> MkO a -> Sink a
 runMkO name (MkO mko') a = do
   initGUI
-  GtkGL.initGL
+  initGL
   -- putStrLn "past initGL"
   (wid,sink,cleanup) <- mko'
   window <- windowNew
@@ -180,7 +171,7 @@ runMkO name (MkO mko') a = do
   return ()
 
 instance ToOI MkO where
-  toOI mkO = C.Flip (runMkO "GtkTV" mkO)
+  toOI mkO = Flip (runMkO "GtkTV" mkO)
 
 
 {--------------------------------------------------------------------
@@ -334,8 +325,10 @@ time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
     GtkGL stuff
 --------------------------------------------------------------------}
 
-mkCanvas :: IO GLDrawingArea
-mkCanvas =
+-- | Render output, given a rendering action.  Handles all set-up.
+-- Intended as a basis for functional graphics. 
+renderO :: Out Action
+renderO = primMkO $
   do glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
                              , GLModeDouble, GLModeAlpha ]
      canvas <- glDrawingAreaNew glconfig
@@ -359,27 +352,17 @@ mkCanvas =
           viewport $= (Position (start w) (start h), Size dim dim)
           -- putStrLn "onExpose"
           return True
-     -- putStrLn "returning from mkCanvas"
-     return canvas
-
-display :: GLDrawingArea -> Sink Action
-display canvas render =
-  do -- putStrLn "display"
-     withGLDrawingArea canvas $ \glwindow ->
-       do -- putStrLn "clearing"
-          clear [DepthBuffer, ColorBuffer]
-          render
-          -- glWaitVSync
-          finish
-          glDrawableSwapBuffers glwindow
-     return ()
-
-
--- | Render output, given a rendering action.  Handles all set-up.
--- Intended as a basis for functional graphics. 
-renderO :: Out Action
-renderO = primMkO $ do canvas <- mkCanvas
-                       return (toWidget canvas, display canvas, return ())
+     let display draw =
+           -- Draw in context
+           do withGLDrawingArea canvas $ \glwindow ->
+                 do -- putStrLn "clearing"
+                    clear [DepthBuffer, ColorBuffer]
+                    draw
+                    -- glWaitVSync
+                    finish
+                    glDrawableSwapBuffers glwindow
+     -- putStrLn "returning from renderO setup"
+     return (toWidget canvas, display, return ())
 
 -- Now a test renderer.
 
@@ -399,5 +382,3 @@ square = renderPrimitive Quads $  -- start drawing a polygon (4 sided)
  where
    vert x y = vertex (Vertex3 x y (0 :: GLfloat))
    o = 0.9
-
-
