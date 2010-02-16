@@ -343,15 +343,9 @@ renderO = primMkO $
           depthFunc  $= Just Less
           drawBuffer $= BackBuffers
           clearColor $= Color4 0 0 0.2 1
-     -- Sync canvas size with GL viewport
-     onExpose canvas $ \_ -> 
-       do (w',h') <- widgetGetSize canvas
-          let w = fromIntegral w' ; h = fromIntegral h'
-          let dim :: GLsizei; start :: GLsizei -> GLint
-              dim = w `min` h ; start s = fromIntegral ((s - dim) `div` 2)
-          viewport $= (Position (start w) (start h), Size dim dim)
-          -- putStrLn "onExpose"
-          return True
+     -- Stash the latest draw action for use in onExpose
+     drawRef <- newIORef (return ())
+     -- Sync canvas size with GL viewport, and use draw action
      let display draw =
            -- Draw in context
            do withGLDrawingArea canvas $ \glwindow ->
@@ -361,6 +355,16 @@ renderO = primMkO $
                     -- glWaitVSync
                     finish
                     glDrawableSwapBuffers glwindow
+                    writeIORef drawRef draw
+     onExpose canvas $ \_ -> 
+       do (w',h') <- widgetGetSize canvas
+          let w = fromIntegral w' ; h = fromIntegral h'
+          let dim :: GLsizei; start :: GLsizei -> GLint
+              dim = w `min` h ; start s = fromIntegral ((s - dim) `div` 2)
+          -- putStrLn "onExpose"
+          viewport $= (Position (start w) (start h), Size dim dim)
+          readIORef drawRef >>= display
+          return True
      -- putStrLn "returning from renderO setup"
      return (toWidget canvas, display, return ())
 
