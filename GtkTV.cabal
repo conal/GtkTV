@@ -25,7 +25,7 @@ Library
   hs-Source-Dirs:      src
   Extensions:
   Build-Depends:       base<5, time, gtk, TypeCompose>=0.6.7, TV
-                     , OpenGL, gtkglext
+                     , OpenGL, gtkglext, glew
   Exposed-Modules:
                        Interface.TV.Gtk
   ghc-options:         -Wall

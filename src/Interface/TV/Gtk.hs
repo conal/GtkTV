@@ -14,7 +14,7 @@
 
 module Interface.TV.Gtk
   ( -- * TV type specializations
-    In, Out, GTV, gtv, runGTV
+    In, Out, GTV, gtv, runGTV, runOut, runOutIO
     -- * UI primitives
   , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut
   , module Interface.TV
@@ -39,6 +39,8 @@ import Control.Compose (ToOI(..),Cofunctor(..),Flip(..))
 
 import Interface.TV
 
+-- I'd like to eliminate this dependency.
+import qualified Graphics.Glew as Glew
 
 {--------------------------------------------------------------------
     TV type specializations
@@ -138,13 +140,29 @@ instance CommonOuts MkO where
 result :: (b -> b') -> ((a -> b) -> (a -> b'))
 result = (.)
 
+-- | Add pre-processing.
+argument :: (a' -> a) -> ((a -> b) -> (a' -> b))
+argument = flip (.)
+
 -- runOut :: String -> Out a -> a -> Action
 -- runOut name out a = runMkO name (output out) a
 
-runMkO :: String -> MkO a -> Sink a
-runMkO name (MkO mko') a = do
+-- -- glProbe triggers a bus error if executed before the widgetShowAll
+-- glProbe :: Action
+-- glProbe = do putStrLn "matrixMode Projection"
+--              matrixMode $= Projection >> loadIdentity
+
+runMkO :: String -> MkO a -> a -> Action
+runMkO = (result.result.argument) return runMkOIO
+
+-- runMkO name mko = runMkOIO name mko . return
+
+
+runMkOIO :: String -> MkO a -> IO a -> Action
+runMkOIO name (MkO mko') mkA = do
+  -- putStrLn "about to initGUI & GL"
   initGUI
-  initGL
+  -- initGL
   -- putStrLn "past initGL"
   (wid,sink,cleanup) <- mko'
   window <- windowNew
@@ -156,18 +174,34 @@ runMkO name (MkO mko') a = do
              , windowTitle          := name
              ]
   onDestroy window (cleanup >> mainQuit)
-  -- putStrLn "showing windowO"
+  -- glProbe
+  -- putStrLn "showing window"
   widgetShowAll window
-  -- Glew.glewInit                         --TODO: try moving up.
+  -- Must come after the widgetShowAll
+  Glew.glewInit
   -- putStrLn "initial sink"
   -- Initial sink.  Must come after show-all for the GLDrawingArea.
-  sink a
+  mkA >>= sink
   -- putStrLn "about to mainGUI"
   mainGUI
   return ()
 
 instance ToOI MkO where
   toOI mkO = Flip (runMkO "GtkTV" mkO)
+
+
+-- | Run a visualization on a constructed ('IO'-extracted) value.  The
+-- action is executed just once, after the visualization is all set up,
+-- which allows for things like OpenGL shader compilation.
+runOutIO :: String -> Out a -> IO a -> Action
+runOutIO name out = runMkOIO name (output out)
+
+runOut :: String -> Out a -> a -> Action
+runOut = (result.result.argument) return runOutIO
+-- runOut name out = runOutIO name out . return
+
+-- I'd like to eliminate the glew dependency, and I don't know how.  The
+-- ToOI method doesn't get a chance to pass in specialized info.  Hm.
 
 
 {--------------------------------------------------------------------
@@ -249,10 +283,12 @@ type R = Float
 sliderRIn :: (R,R) -> R -> In R
 sliderRIn = sliderGIn realToFrac realToFrac 0.01 5
 
--- What does the step argument mean (0.01)?
-
 sliderIIn :: (Int,Int) -> Int -> In Int
 sliderIIn = sliderGIn fromIntegral round 1 0
+
+-- The step argument indicates how big a jump to make when clicking to one
+-- side of the slider tab.  Seems to be a fraction of the whole range,
+-- rather than a fixed amount.  I don't know what makes a good choice.
 
 -- Generalized slider.  Gtk's scaling widgets work with Double, so this
 -- adapter takes some initial params for conversion.  Only fires when a
@@ -322,7 +358,7 @@ time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
 --------------------------------------------------------------------}
 
 -- | Render output, given a rendering action.  Handles all set-up.
--- Intended as a basis for functional graphics. 
+-- Intended as an implementation substrate for functional graphics. 
 renderOut :: Out Action
 renderOut = primMkO $
   do glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
@@ -332,7 +368,7 @@ renderOut = primMkO $
      widgetSetSizeRequest canvas 300 300
      -- Initialise some GL setting just before the canvas first gets shown
      -- (We can't initialise these things earlier since the GL resources that
-     -- we are using wouldn't heve been setup yet)
+     -- we are using wouldn't have been set up yet)
      -- TODO experiment with moving some of these steps.
      onRealize canvas $ withGLDrawingArea canvas $ const $
        do -- setupMatrices  -- do elsewhere, e.g., runSurface
@@ -344,21 +380,22 @@ renderOut = primMkO $
      -- Sync canvas size with GL viewport, and use draw action
      let display draw =
            -- Draw in context
-           do withGLDrawingArea canvas $ \glwindow ->
-                 do -- putStrLn "clearing"
-                    clear [DepthBuffer, ColorBuffer]
-                    draw
-                    -- glWaitVSync
-                    finish
-                    glDrawableSwapBuffers glwindow
-                    writeIORef drawRef draw
+           withGLDrawingArea canvas $ \glwindow ->
+              do -- putStrLn "clearing"
+                 clear [DepthBuffer, ColorBuffer]
+                 -- putStrLn "draw"
+                 draw
+                 -- glWaitVSync
+                 finish
+                 glDrawableSwapBuffers glwindow
+                 writeIORef drawRef draw
      onExpose canvas $ \_ -> 
        do (w',h') <- widgetGetSize canvas
           let w = fromIntegral w' ; h = fromIntegral h'
           let dim :: GLsizei; start :: GLsizei -> GLint
               dim = w `min` h ; start s = fromIntegral ((s - dim) `div` 2)
           -- putStrLn "onExpose"
-          viewport $= (Position (start w) (start h), Size dim dim)
+          viewport $= (Position (start w) (start h), Size dim dim)  -- square??
           readIORef drawRef >>= display
           return True
      -- putStrLn "returning from renderO setup"
