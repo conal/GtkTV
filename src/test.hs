@@ -77,23 +77,15 @@ tv6 = tv (title "currying" o6)  (curry show)
 
 -- t6 = runOut "currying" o6  (\ a b -> show (a,b))
 
-{-
+t7 :: Action
+t7 = testI $ sliderIIn (0,5) 3 
 
-t7 = testI TextureIn 0
+t8 :: Action
+t8 = testI $ boolIn True
 
-tryTex str = do allInit 
-                loadTexture' str >>= print
-                IL.showErrors
-                showGLErrors
+t9 :: Action
+t9 = testI $ stringIn "bloop"
 
-t8 = tryTex "marble-256.png"
-
-main = t6
-
--- With a bogus file, I get errors.  With a legit file I get no errors and
--- texture 0.  Hm!  Could 0 be correct?  Try applying the texture.
-
--}
 
 {--------------------------------------------------------------------
     Taken from GuiTV (based on Reactive, Phooey, and wxhaskell)
@@ -109,7 +101,6 @@ total = title "total" showOut
 shoppingO :: COutput (Int -> Int -> Int)
 shoppingO = title "shopping list" $
             oLambda apples (oLambda bananas total)
-
 
 shopping :: CTV (Int -> Int -> Int)
 shopping = tv shoppingO (+)

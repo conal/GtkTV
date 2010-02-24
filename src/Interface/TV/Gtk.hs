@@ -39,9 +39,6 @@ import Control.Compose (ToOI(..),Cofunctor(..),Flip(..))
 
 import Interface.TV
 
--- I'd like to eliminate this dependency.
-import qualified Graphics.Glew as Glew
-
 {--------------------------------------------------------------------
     TV type specializations
 --------------------------------------------------------------------}
@@ -82,15 +79,15 @@ infixl 1 >+>  -- first guess
 -- Make a input UI.
 newtype MkI  a = MkI (MkI' a)
 
--- Representation type for 'MkI'.  Takes a change call-back and produces a widget and a
--- polling operation and a clean-up action.
+-- Representation type for 'MkI'.  Takes a change call-back and produces a widget, a
+-- polling operation and a termination clean-up action.
 type MkI' a = Action -> IO (Widget, IO a, Action)
 
 -- Make an output UI.
 newtype MkO a = MkO (MkO' a)
 
--- Representation type for 'MkO'.  Give a widget and a way to send it new
--- info to display and a clean-up action.
+-- Representation type for 'MkO'.  Produce a widget, a way to send it new
+-- info to display, and a termination clean-up action.
 type MkO' a = IO (Widget, Sink a, Action)
 
 -- Currently, the clean-up actions are created only by clockDtI, and just
@@ -162,9 +159,9 @@ runMkOIO :: String -> MkO a -> IO a -> Action
 runMkOIO name (MkO mko') mkA = do
   -- putStrLn "about to initGUI & GL"
   initGUI
-  -- initGL
   -- putStrLn "past initGL"
   (wid,sink,cleanup) <- mko'
+  -- putStrLn "did mko'"
   window <- windowNew
   set window [ windowDefaultWidth   := 200
           -- , windowDefaultHeight  := 200
@@ -178,8 +175,9 @@ runMkOIO name (MkO mko') mkA = do
   -- putStrLn "showing window"
   widgetShowAll window
   -- Must come after the widgetShowAll
-  Glew.glewInit
-  -- putStrLn "initial sink"
+  -- putStrLn "glewInit"
+  -- Glew.glewInit
+  putStrLn "initial sink"
   -- Initial sink.  Must come after show-all for the GLDrawingArea.
   mkA >>= sink
   -- putStrLn "about to mainGUI"
@@ -254,7 +252,7 @@ instance Title_f MkO where
 
 instance Lambda MkI MkO where
   lambda (MkI ia) (MkO ob) = MkO $
-    mdo box  <- boxNew Vertical False 10
+    mdo box  <- boxNew Vertical False 0  -- 10?
         reff <- newIORef (error "mkLambda: no function yet")
         let update = do f <- readIORef reff
                         a <- geta   -- note loop
@@ -293,22 +291,26 @@ sliderIIn = sliderGIn fromIntegral round 1 0
 -- Generalized slider.  Gtk's scaling widgets work with Double, so this
 -- adapter takes some initial params for conversion.  Only fires when a
 -- value really changes.
-sliderGIn :: Eq a => (a -> Double) -> (Double -> a) -> a -> Int
+sliderGIn :: (Show a, Eq a) => (a -> Double) -> (Double -> a) -> a -> Int
             -> (a,a) -> a -> In a
 sliderGIn toD fromD step digits
              (lo,hi) a0 = primMkI $ \ refresh ->
-  let changeTo getter new =
-        do old <- getter
-           -- putStrLn $ "(old,new) ==" ++ show (old,new)
-           when (old /= new) refresh
-  in
-      do w <- hScaleNewWithRange (toD lo) (toD hi) (toD step)
-         set w [ rangeValue := toD a0, scaleDigits := digits ]
-         -- Unlike wxHaskell, I guess call-backs aren't attributes in gtk2hs.
-         let getter = fromD <$> get w rangeValue
-         onRangeChangeValue w (\ _ x -> changeTo getter (fromD x) >> return False)
-         -- TODO: experiment with return False vs True
-         return (toWidget w, getter, return ())
+  do oldRef <- newIORef a0
+     w <- hScaleNewWithRange (toD lo) (toD hi) (toD step)
+     set w [ rangeValue := toD a0, scaleDigits := digits ]
+     let getter = fromD <$> get w rangeValue
+         changeTo new =
+           do old <- readIORef oldRef
+              -- putStrLn $ "(old,new) ==" ++ show (old,new)
+              when (old /= new) $
+                   do -- putStrLn "updating"
+                      refresh
+                      writeIORef oldRef new
+     -- Unlike wxHaskell, I guess call-backs aren't attributes in gtk2hs.
+     afterRangeChangeValue w (\ _ x -> changeTo (fromD x) >> return False)
+     -- TODO: experiment with return False vs True
+     return (toWidget w, getter, return ())
+
 
 fileNameIn :: FilePath -> In FilePath
 fileNameIn start = primMkI $ \ refresh ->
@@ -361,7 +363,8 @@ time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
 -- Intended as an implementation substrate for functional graphics. 
 renderOut :: Out Action
 renderOut = primMkO $
-  do glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
+  do initGL
+     glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
                              , GLModeDouble, GLModeAlpha ]
      canvas <- glDrawingAreaNew glconfig
      -- putStrLn "made canvas"
