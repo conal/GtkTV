@@ -141,14 +141,6 @@ result = (.)
 argument :: (a' -> a) -> ((a -> b) -> (a' -> b))
 argument = flip (.)
 
--- runOut :: String -> Out a -> a -> Action
--- runOut name out a = runMkO name (output out) a
-
--- -- glProbe triggers a bus error if executed before the widgetShowAll
--- glProbe :: Action
--- glProbe = do putStrLn "matrixMode Projection"
---              matrixMode $= Projection >> loadIdentity
-
 runMkO :: String -> MkO a -> a -> Action
 runMkO = (result.result.argument) return runMkOIO
 
@@ -157,11 +149,8 @@ runMkO = (result.result.argument) return runMkOIO
 
 runMkOIO :: String -> MkO a -> IO a -> Action
 runMkOIO name (MkO mko') mkA = do
-  -- putStrLn "about to initGUI & GL"
   initGUI
-  -- putStrLn "past initGL"
   (wid,sink,cleanup) <- mko'
-  -- putStrLn "did mko'"
   window <- windowNew
   set window [ windowDefaultWidth   := 200
           -- , windowDefaultHeight  := 200
@@ -171,16 +160,9 @@ runMkOIO name (MkO mko') mkA = do
              , windowTitle          := name
              ]
   onDestroy window (cleanup >> mainQuit)
-  -- glProbe
-  -- putStrLn "showing window"
   widgetShowAll window
-  -- Must come after the widgetShowAll
-  -- putStrLn "glewInit"
-  -- Glew.glewInit
-  putStrLn "initial sink"
   -- Initial sink.  Must come after show-all for the GLDrawingArea.
   mkA >>= sink
-  -- putStrLn "about to mainGUI"
   mainGUI
   return ()
 
@@ -301,10 +283,8 @@ sliderGIn toD fromD step digits
      let getter = fromD <$> get w rangeValue
          changeTo new =
            do old <- readIORef oldRef
-              -- putStrLn $ "(old,new) ==" ++ show (old,new)
               when (old /= new) $
-                   do -- putStrLn "updating"
-                      refresh
+                   do refresh
                       writeIORef oldRef new
      -- Unlike wxHaskell, I guess call-backs aren't attributes in gtk2hs.
      afterRangeChangeValue w (\ _ x -> changeTo (fromD x) >> return False)
@@ -367,7 +347,6 @@ renderOut = primMkO $
      glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
                              , GLModeDouble, GLModeAlpha ]
      canvas <- glDrawingAreaNew glconfig
-     -- putStrLn "made canvas"
      widgetSetSizeRequest canvas 300 300
      -- Initialise some GL setting just before the canvas first gets shown
      -- (We can't initialise these things earlier since the GL resources that
@@ -384,9 +363,7 @@ renderOut = primMkO $
      let display draw =
            -- Draw in context
            withGLDrawingArea canvas $ \glwindow ->
-              do -- putStrLn "clearing"
-                 clear [DepthBuffer, ColorBuffer]
-                 -- putStrLn "draw"
+              do clear [DepthBuffer, ColorBuffer]
                  draw
                  -- glWaitVSync
                  finish
@@ -397,9 +374,7 @@ renderOut = primMkO $
           let w = fromIntegral w' ; h = fromIntegral h'
           let dim :: GLsizei; start :: GLsizei -> GLint
               dim = w `min` h ; start s = fromIntegral ((s - dim) `div` 2)
-          -- putStrLn "onExpose"
           viewport $= (Position (start w) (start h), Size dim dim)  -- square??
           readIORef drawRef >>= display
           return True
-     -- putStrLn "returning from renderO setup"
      return (toWidget canvas, display, return ())
