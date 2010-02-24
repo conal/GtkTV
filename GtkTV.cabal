@@ -1,5 +1,5 @@
 Name:                GtkTV
-Version:             0.1.5
+Version:             0.1.6
 Cabal-Version:       >= 1.2
 Synopsis:            Gtk-based GUIs for Tangible Values
 Category:            User Interfaces
@@ -18,9 +18,13 @@ Stability:           experimental
 build-type:          Simple
 extra-source-files:
                      examples/test
-Source-Repository head
-    type:         darcs
-    location:     http://code.haskell.org/~conal/code/GtkTV
+Package-Url:         http://code.haskell.org/~conal/code/GtkTV
+-- Wait until Cabal 1.6 is more wide-spread and then add the following
+-- in place of the Package-Url field and bump Cabal-Version to >= 1.6.
+-- 
+-- Source-Repository head
+--     type:         darcs
+--     location:     http://code.haskell.org/~conal/code/GtkTV
 
 Library
   hs-Source-Dirs:      src
