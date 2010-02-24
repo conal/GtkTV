@@ -11,7 +11,7 @@ Description:
 Author:              Conal Elliott
 Maintainer:          conal@conal.net
 Homepage:            http://haskell.org/haskellwiki/GtkTV
-Source-repo:         http://code.haskell.org/~conal/code/GtkTV
+Package-Url:         http://code.haskell.org/~conal/code/GtkTV
 Copyright:           (c) 2009, 2010 by Conal Elliott
 License:             BSD3
 License-File:        COPYING
