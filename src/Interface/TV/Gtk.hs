@@ -241,7 +241,11 @@ instance Lambda MkI MkO where
                         snkb (f a)
         (wa,geta,cleana) <- ia update
         (wb,snkb,cleanb) <- ob
-        set box [ containerChild := wa , containerChild := wb ]
+        -- set box [ containerChild := wa , containerChild := wb ]
+        -- Hack: stretch output but not input.  Really I want to choose
+        -- per widget and propagate upward.
+        boxPackStart box wa PackNatural 0
+        boxPackStart box wb PackGrow    0
         return ( toWidget box
                , \ f -> writeIORef reff f >> update
                , cleana >> cleanb)
@@ -290,6 +294,12 @@ sliderGIn toD fromD step digits
      afterRangeChangeValue w (\ _ x -> changeTo (fromD x) >> return False)
      -- TODO: experiment with return False vs True
      return (toWidget w, getter, return ())
+
+-- -- Prevent vertical stretching
+-- noVert :: WidgetClass w => w -> IO Widget
+-- noVert w = do b <- boxNew Vertical False 0
+--               boxPackStart b w PackNatural 0
+--               return (toWidget b)
 
 
 fileNameIn :: FilePath -> In FilePath
