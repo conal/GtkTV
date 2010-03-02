@@ -1,8 +1,6 @@
 {-# LANGUAGE RecursiveDo, MultiParamTypeClasses, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wall #-}
-
-{-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}   -- TEMP
-
+-- {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}   -- TEMP
 ----------------------------------------------------------------------
 -- |
 -- Module      :  Interface.TV.Gtk
@@ -19,7 +17,7 @@ module Interface.TV.Gtk
   ( -- * TV type specializations
     In, Out, GTV, gtv, runGTV, runOut, runOutIO
     -- * UI primitives
-  , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut
+  , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut, textureIn
   , module Interface.TV
   ) where
 
@@ -426,38 +424,44 @@ fileNameIn start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
      fileChooserSetFilename w start
      onCurrentFolderChanged w refresh
-     -- fileChooserGetFilename w >>= print    -- testing
      return ( toWidget w
             , fromMaybe start <$> fileChooserGetFilename w
             , return () )
 
 -- onEntryActivate :: EntryClass ec => ec -> Action -> IO (ConnectId ec)
 
-
 textureIn :: TextureObject -> In TextureObject
-textureIn = fileMungeIn loadTextureObj
+textureIn = fileMungeIn loadTextureObj deleteTex
 
-fileMungeIn :: (FilePath -> IO (Either String a))
-            -> a -> In a
-fileMungeIn munge start = primMkI $ \ refresh ->
+deleteTex :: Sink TextureObject
+deleteTex = deleteObjectNames . (:[])
+
+fileMungeIn :: (FilePath -> IO (Either String a)) -> Sink a -> a -> In a
+fileMungeIn munge free start = fmap (fromMaybe start) (fileMungeMbIn munge free)
+
+fileMungeMbIn :: (FilePath -> IO (Either String a))
+              -> Sink a
+              -> In (Maybe a)
+fileMungeMbIn munge free = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
-     -- fileChooserSetFilename w start
-     onCurrentFolderChanged w refresh
-     -- fileChooserGetFilename w >>= print    -- testing
-     return ( toWidget w
-            , fromMaybe start <$> getVal w
-            , return () )
- where
-   getVal w =
-     do mb <- fileChooserGetFilename w
-        case mb of
-          Nothing -> return Nothing
-          Just path ->
-            do e <- munge path
-               case e of
-                 Left err -> do putStrLn $ "textureIn error: " ++ err
-                                return Nothing
-                 Right tex -> return (Just tex)
+     current <- newIORef Nothing
+     onCurrentFolderChanged w $
+       do mb <- fileChooserGetFilename w
+          case mb of
+            Nothing -> return ()
+            Just path ->
+              do e <- munge path
+                 case e of
+                   Left err -> putStrLn $ "fileMungeMbIn error: " ++ err
+                   Right a  -> do readIORef current >>= maybe (return ()) free
+                                  writeIORef current (Just a)
+                                  refresh
+     return (toWidget w, readIORef current, return ())
 
 -- TODO: Replace the error message with a GUI version.
--- TODO: Look for more elegant getVal def.
+
+-- We're freeing the old thingie before saving the new thingie.  In a
+-- multi-threaded setting, there could be dire consequences.
+
+-- I'd like to move to a consistently GC'd setting, in which textures,
+-- shaders, etc are GC'd.  In that case, what keeps GPU resources alive?
