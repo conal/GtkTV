@@ -1,5 +1,8 @@
-{-# LANGUAGE RecursiveDo, MultiParamTypeClasses #-}
+{-# LANGUAGE RecursiveDo, MultiParamTypeClasses, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wall #-}
+
+{-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}   -- TEMP
+
 ----------------------------------------------------------------------
 -- |
 -- Module      :  Interface.TV.Gtk
@@ -30,6 +33,9 @@ import Data.Time (getCurrentTime,utctDayTime)
 import Graphics.UI.Gtk hiding (Action)
 import Graphics.UI.Gtk.OpenGL
 import Graphics.Rendering.OpenGL hiding (Sink,get)
+-- For textures
+import Data.Bitmap.OpenGL
+import Codec.Image.STB
 
 -- From TypeCompose
 import Data.Title
@@ -302,24 +308,6 @@ sliderGIn toD fromD step digits
 --               return (toWidget b)
 
 
-fileNameIn :: FilePath -> In FilePath
-fileNameIn start = primMkI $ \ refresh ->
-  do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
-     fileChooserSetFilename w start
-     onCurrentFolderChanged w refresh
-     -- fileChooserGetFilename w >>= print    -- testing
-     return ( toWidget w
-            , fromMaybe start <$> fileChooserGetFilename w
-            , return () )
-
--- mkTextureI :: GlTexture -> In GlTexture
--- mkTextureI = error "mkTexture: not yet implemented"
-
--- mkTexture start refresh (BaseG oi) = do ...
--- mkTexture _ _ _ = error "mkTexture: not BaseG"
-
--- onEntryActivate :: EntryClass ec => ec -> Action -> IO (ConnectId ec)
-
 -- | A clock that reports time in seconds and updates at the given period
 -- (in seconds).
 clockDtI :: R -> In R
@@ -388,3 +376,88 @@ renderOut = primMkO $
           readIORef drawRef >>= display
           return True
      return (toWidget canvas, display, return ())
+
+
+
+-- mkTextureIn :: GlTexture -> In GlTexture
+-- mkTextureIn = error "mkTexture: not yet implemented"
+
+-- Plan: make a
+
+-- fmapIOErr :: (a -> IO (Either String b)) -> MkI' a -> MkI' b
+-- fmapIOErr mk refresh =
+--   do (w,poll,clean) <- mk refresh
+     
+-- type MkI' a = Action -> IO (Widget, IO a, Action)
+
+
+
+-- Hm.  I don't yet see how to get there.  Start over as a primitive
+-- widget, copying some of the def of 'fileNameIn'.  Then refactor.
+
+
+
+-- Then use
+
+-- type FilePath = String
+
+-- fileNameIn :: FilePath -> In FilePath
+
+loadTextureObj :: FilePath -> IO (Either String TextureObject)
+loadTextureObj path =
+  do e  <- loadImage path
+     case e of
+       Left err -> return (Left err)
+       Right im -> Right <$> makeSimpleBitmapTexture im
+
+-- Is there a more elegant formulation of loadTextureObj?  It's close to
+-- being fmap on Either.  I can almost get there as follows:
+-- 
+--   foo :: FilePath -> IO (Either String (IO TextureObject))
+--   foo = (result.fmap.fmap) makeSimpleBitmapTexture loadImage
+
+-- loadImage :: FilePath -> IO (Either String Image)
+-- makeSimpleBitmapTexture :: Image -> IO TextureObject
+
+
+
+fileNameIn :: FilePath -> In FilePath
+fileNameIn start = primMkI $ \ refresh ->
+  do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
+     fileChooserSetFilename w start
+     onCurrentFolderChanged w refresh
+     -- fileChooserGetFilename w >>= print    -- testing
+     return ( toWidget w
+            , fromMaybe start <$> fileChooserGetFilename w
+            , return () )
+
+-- onEntryActivate :: EntryClass ec => ec -> Action -> IO (ConnectId ec)
+
+
+textureIn :: TextureObject -> In TextureObject
+textureIn = fileMungeIn loadTextureObj
+
+fileMungeIn :: (FilePath -> IO (Either String a))
+            -> a -> In a
+fileMungeIn munge start = primMkI $ \ refresh ->
+  do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
+     -- fileChooserSetFilename w start
+     onCurrentFolderChanged w refresh
+     -- fileChooserGetFilename w >>= print    -- testing
+     return ( toWidget w
+            , fromMaybe start <$> getVal w
+            , return () )
+ where
+   getVal w =
+     do mb <- fileChooserGetFilename w
+        case mb of
+          Nothing -> return Nothing
+          Just path ->
+            do e <- munge path
+               case e of
+                 Left err -> do putStrLn $ "textureIn error: " ++ err
+                                return Nothing
+                 Right tex -> return (Just tex)
+
+-- TODO: Replace the error message with a GUI version.
+-- TODO: Look for more elegant getVal def.

@@ -86,6 +86,8 @@ t8 = testI $ boolIn True
 t9 :: Action
 t9 = testI $ stringIn "bloop"
 
+i5 :: In String
+i5 = fileNameIn "bloop"
 
 {--------------------------------------------------------------------
     Taken from GuiTV (based on Reactive, Phooey, and wxhaskell)
@@ -198,3 +200,4 @@ tv11 = dupA $$ tv7
 
 tv12 :: GTV (R -> (Action,Action))
 tv12 = result dupA $$ tv8
+
