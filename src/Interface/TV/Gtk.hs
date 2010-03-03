@@ -18,7 +18,7 @@ module Interface.TV.Gtk
     In, Out, GTV, gtv, runGTV, runOut, runOutIO
     -- * UI primitives
   , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut
-  , Tex(..), emptyTex, textureIn, textureMbIn
+  , emptyTexture, textureIsEmpty, textureIn
   , module Interface.TV
   ) where
 
@@ -34,7 +34,6 @@ import Graphics.UI.Gtk.OpenGL
 import qualified Graphics.Rendering.OpenGL as G
 import Graphics.Rendering.OpenGL hiding (Sink,get)
 -- For textures
-import Data.Bitmap (bitmapSize)
 import Data.Bitmap.OpenGL
 import Codec.Image.STB
 
@@ -389,47 +388,23 @@ flipY = scale (1 :: GLfloat) (-1) 1
 
 -- Is there another way to flip Y?
 
+-- | An empty texture.  Test with 'textureIsEmpty'
+emptyTexture :: TextureObject
+emptyTexture = TextureObject bogusTO
 
--- mkTextureIn :: GlTexture -> In GlTexture
--- mkTextureIn = error "mkTexture: not yet implemented"
+bogusTO :: G.GLuint
+bogusTO = -1
 
--- Plan: make a
+-- | Is a texture empty?
+textureIsEmpty :: TextureObject -> Bool
+textureIsEmpty (TextureObject i) = i == bogusTO
 
--- fmapIOErr :: (a -> IO (Either String b)) -> MkI' a -> MkI' b
--- fmapIOErr mk refresh =
---   do (w,poll,clean) <- mk refresh
-     
--- type MkI' a = Action -> IO (Widget, IO a, Action)
-
-
-
--- Hm.  I don't yet see how to get there.  Start over as a primitive
--- widget, copying some of the def of 'fileNameIn'.  Then refactor.
-
-
-
--- Then use
-
--- type FilePath = String
-
--- fileNameIn :: FilePath -> In FilePath
-
--- | A texture with aspect ratio (width/height).
-data Tex = Tex { texObj :: TextureObject, texAspect :: GLfloat }
-
-emptyTex :: Tex
-emptyTex = Tex (error "emptyTex: no bits") 0
-
-loadTex :: FilePath -> IO (Either String Tex)
-loadTex path =
+loadTexture :: FilePath -> IO (Either String TextureObject)
+loadTexture path =
   do e  <- loadImage path
      case e of
        Left err -> return (Left err)
-       -- Right im -> Right <$> makeSimpleBitmapTexture im
-       Right im -> do tobj <- makeSimpleBitmapTexture im
-                      return (Right (Tex tobj (aspect (bitmapSize im))))
- where
-   aspect (w,h) = fromIntegral w / fromIntegral h
+       Right im -> Right <$> makeSimpleBitmapTexture im
 
 
 -- Is there a more elegant formulation of loadTex?  It's close to
@@ -452,26 +427,22 @@ fileNameIn start = primMkI $ \ refresh ->
             , fromMaybe start <$> fileChooserGetFilename w
             , return () )
 
--- onEntryActivate :: EntryClass ec => ec -> Action -> IO (ConnectId ec)
+textureIn :: In TextureObject
+textureIn = fileMungeIn loadTexture deleteTexture emptyTexture
 
-textureMbIn :: In (Maybe Tex)
-textureMbIn = fileMungeMbIn loadTex deleteTex
+deleteTexture :: Sink TextureObject
+deleteTexture tex | textureIsEmpty tex = return ()
+                  | otherwise          =
+                      do putStrLn $ "deleteTexture " ++ show tex
+                         deleteObjectNames [tex]
 
-textureIn :: Tex -> In Tex
-textureIn = fileMungeIn loadTex deleteTex
+-- Show a is just for debugging.  Can remove later.
 
-deleteTex :: Sink Tex
-deleteTex = deleteObjectNames . (:[]) . texObj
-
-fileMungeIn :: (FilePath -> IO (Either String a)) -> Sink a -> a -> In a
-fileMungeIn munge free start = fmap (fromMaybe start) (fileMungeMbIn munge free)
-
-fileMungeMbIn :: (FilePath -> IO (Either String a))
-              -> Sink a
-              -> In (Maybe a)
-fileMungeMbIn munge free = primMkI $ \ refresh ->
+fileMungeIn :: Show a =>
+               (FilePath -> IO (Either String a)) -> Sink a -> a -> In a
+fileMungeIn munge free start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
-     current <- newIORef Nothing
+     current <- newIORef start
      onCurrentFolderChanged w $
        do mb <- fileChooserGetFilename w
           case mb of
@@ -479,9 +450,10 @@ fileMungeMbIn munge free = primMkI $ \ refresh ->
             Just path ->
               do e <- munge path
                  case e of
-                   Left err -> putStrLn $ "fileMungeMbIn error: " ++ err
-                   Right a  -> do readIORef current >>= maybe (return ()) free
-                                  writeIORef current (Just a)
+                   Left err -> putStrLn $ "fileMungeIn error: " ++ err
+                   Right a  -> do readIORef current >>= free
+                                  writeIORef current a
+                                  -- putStrLn $ "fileMungeIn: new value " ++ show a
                                   refresh
      return (toWidget w, readIORef current, return ())
 

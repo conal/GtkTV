@@ -163,13 +163,13 @@ renderSquare =
      where q w = 2 * w - 1
 
 
-renderTex :: Sink Tex
-renderTex (Tex _ 0) = return ()
-renderTex (Tex tobj _) = do useTextureObj tobj
-                            renderSquare
+renderTexture :: Sink TextureObject
+renderTexture tex | textureIsEmpty tex = return ()
+                  | otherwise          = do useTexture tex
+                                            renderSquare
 
-useTextureObj :: Sink TextureObject
-useTextureObj obj =
+useTexture :: Sink TextureObject
+useTexture obj =
   do texture Texture2D $= Enabled
      activeTexture $= TextureUnit 0
      textureBinding Texture2D $= Just obj
@@ -218,8 +218,5 @@ tv11 = dupA $$ tv7
 tv12 :: GTV (R -> (Action,Action))
 tv12 = result dupA $$ tv8
 
-renderTexO :: Out (Tex -> Action)
-renderTexO = lambda (textureIn emptyTex) renderOut
-
-tv13 :: GTV (Tex -> Action)
-tv13 = tv renderTexO renderTex
+tv13 :: GTV (TextureObject -> Action)
+tv13 = tv (lambda textureIn renderOut) renderTexture
