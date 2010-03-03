@@ -17,7 +17,8 @@ module Interface.TV.Gtk
   ( -- * TV type specializations
     In, Out, GTV, gtv, runGTV, runOut, runOutIO
     -- * UI primitives
-  , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut, textureIn
+  , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut
+  , Tex(..), emptyTex, textureIn, textureMbIn
   , module Interface.TV
   ) where
 
@@ -30,8 +31,10 @@ import Data.Time (getCurrentTime,utctDayTime)
 
 import Graphics.UI.Gtk hiding (Action)
 import Graphics.UI.Gtk.OpenGL
+import qualified Graphics.Rendering.OpenGL as G
 import Graphics.Rendering.OpenGL hiding (Sink,get)
 -- For textures
+import Data.Bitmap (bitmapSize)
 import Data.Bitmap.OpenGL
 import Codec.Image.STB
 
@@ -335,14 +338,17 @@ time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
     GtkGL stuff
 --------------------------------------------------------------------}
 
+mkCanvas :: IO GLDrawingArea
+mkCanvas =
+ glConfigNew [ GLModeRGBA, GLModeDepth , GLModeDouble, GLModeAlpha ]
+  >>= glDrawingAreaNew
+
 -- | Render output, given a rendering action.  Handles all set-up.
 -- Intended as an implementation substrate for functional graphics. 
 renderOut :: Out Action
 renderOut = primMkO $
   do initGL
-     glconfig <- glConfigNew [ GLModeRGBA, GLModeDepth
-                             , GLModeDouble, GLModeAlpha ]
-     canvas <- glDrawingAreaNew glconfig
+     canvas <- mkCanvas
      widgetSetSizeRequest canvas 300 300
      -- Initialise some GL setting just before the canvas first gets shown
      -- (We can't initialise these things earlier since the GL resources that
@@ -355,26 +361,33 @@ renderOut = primMkO $
           clearColor $= Color4 0 0 0.2 1
      -- Stash the latest draw action for use in onExpose
      drawRef <- newIORef (return ())
-     -- Sync canvas size with GL viewport, and use draw action
      let display draw =
            -- Draw in context
-           withGLDrawingArea canvas $ \glwindow ->
+           withGLDrawingArea canvas $ \ glwindow ->
               do clear [DepthBuffer, ColorBuffer]
+                 flipY
                  draw
+                 flipY
                  -- glWaitVSync
                  finish
                  glDrawableSwapBuffers glwindow
                  writeIORef drawRef draw
+     -- Sync canvas size with and use draw action
      onExpose canvas $ \_ -> 
        do (w',h') <- widgetGetSize canvas
-          let w = fromIntegral w' ; h = fromIntegral h'
-          let dim :: GLsizei; start :: GLsizei -> GLint
-              dim = w `min` h ; start s = fromIntegral ((s - dim) `div` 2)
-          viewport $= (Position (start w) (start h), Size dim dim)  -- square??
+          let w = fromIntegral w' :: GLsizei
+              h = fromIntegral h'
+              maxWH = w `max` h
+              start s = fromIntegral ((s - maxWH) `div` 2)
+          viewport $= (Position (start w) (start h), Size maxWH maxWH)  -- square
           readIORef drawRef >>= display
           return True
      return (toWidget canvas, display, return ())
 
+flipY :: Action
+flipY = scale (1 :: GLfloat) (-1) 1
+
+-- Is there another way to flip Y?
 
 
 -- mkTextureIn :: GlTexture -> In GlTexture
@@ -401,14 +414,25 @@ renderOut = primMkO $
 
 -- fileNameIn :: FilePath -> In FilePath
 
-loadTextureObj :: FilePath -> IO (Either String TextureObject)
-loadTextureObj path =
+-- | A texture with aspect ratio (width/height).
+data Tex = Tex { texObj :: TextureObject, texAspect :: GLfloat }
+
+emptyTex :: Tex
+emptyTex = Tex (error "emptyTex: no bits") 0
+
+loadTex :: FilePath -> IO (Either String Tex)
+loadTex path =
   do e  <- loadImage path
      case e of
        Left err -> return (Left err)
-       Right im -> Right <$> makeSimpleBitmapTexture im
+       -- Right im -> Right <$> makeSimpleBitmapTexture im
+       Right im -> do tobj <- makeSimpleBitmapTexture im
+                      return (Right (Tex tobj (aspect (bitmapSize im))))
+ where
+   aspect (w,h) = fromIntegral w / fromIntegral h
 
--- Is there a more elegant formulation of loadTextureObj?  It's close to
+
+-- Is there a more elegant formulation of loadTex?  It's close to
 -- being fmap on Either.  I can almost get there as follows:
 -- 
 --   foo :: FilePath -> IO (Either String (IO TextureObject))
@@ -430,11 +454,14 @@ fileNameIn start = primMkI $ \ refresh ->
 
 -- onEntryActivate :: EntryClass ec => ec -> Action -> IO (ConnectId ec)
 
-textureIn :: TextureObject -> In TextureObject
-textureIn = fileMungeIn loadTextureObj deleteTex
+textureMbIn :: In (Maybe Tex)
+textureMbIn = fileMungeMbIn loadTex deleteTex
 
-deleteTex :: Sink TextureObject
-deleteTex = deleteObjectNames . (:[])
+textureIn :: Tex -> In Tex
+textureIn = fileMungeIn loadTex deleteTex
+
+deleteTex :: Sink Tex
+deleteTex = deleteObjectNames . (:[]) . texObj
 
 fileMungeIn :: (FilePath -> IO (Either String a)) -> Sink a -> a -> In a
 fileMungeIn munge free start = fmap (fromMaybe start) (fileMungeMbIn munge free)
@@ -465,3 +492,7 @@ fileMungeMbIn munge free = primMkI $ \ refresh ->
 
 -- I'd like to move to a consistently GC'd setting, in which textures,
 -- shaders, etc are GC'd.  In that case, what keeps GPU resources alive?
+
+
+-- z1 :: IO (Either String TextureObject)
+-- z1 = loadTex "/Users/conal/post-nvc/marshall-rosenberg.jpg"

@@ -143,19 +143,36 @@ shoppingPrU = uncurryA $$ shoppingU
 renderGray :: Sink Float
 renderGray x' = do -- putStrLn "renderGray"
                    color (Color4 x x x x)
-                   square
+                   renderSquare
  where
    x = realToFrac x' :: GLfloat
 
-square :: Action
-square = renderPrimitive Quads $  -- start drawing a polygon (4 sided)
-           do vert (-o)   o  -- top left
-              vert   o    o  -- top right
-              vert   o  (-o) -- bottom right
-              vert (-o) (-o) -- bottom left
+-- Render a square with vertex coordinates ranging from -1 to 1 and
+-- texture coordinates ranging from 0 to 1
+renderSquare :: Action
+renderSquare =
+  do renderPrimitive Quads $  -- start drawing a polygon (4 sided)
+       do vert 0 1 -- top left
+          vert 1 1 -- top right
+          vert 1 0 -- bottom right
+          vert 0 0 -- bottom left
  where
-   vert x y = vertex (Vertex3 x y (0 :: GLfloat))
-   o = 0.9
+   vert :: GLfloat -> GLfloat -> Action
+   vert u v = do texCoord (TexCoord2 u v)
+                 vertex (Vertex2 (q u) (q v))
+     where q w = 2 * w - 1
+
+
+renderTex :: Sink Tex
+renderTex (Tex _ 0) = return ()
+renderTex (Tex tobj _) = do useTextureObj tobj
+                            renderSquare
+
+useTextureObj :: Sink TextureObject
+useTextureObj obj =
+  do texture Texture2D $= Enabled
+     activeTexture $= TextureUnit 0
+     textureBinding Texture2D $= Just obj
 
 
 iGray :: In R
@@ -201,3 +218,8 @@ tv11 = dupA $$ tv7
 tv12 :: GTV (R -> (Action,Action))
 tv12 = result dupA $$ tv8
 
+renderTexO :: Out (Tex -> Action)
+renderTexO = lambda (textureIn emptyTex) renderOut
+
+tv13 :: GTV (Tex -> Action)
+tv13 = tv renderTexO renderTex
