@@ -433,12 +433,10 @@ textureIn = fileMungeIn loadTexture deleteTexture emptyTexture
 deleteTexture :: Sink TextureObject
 deleteTexture tex | textureIsEmpty tex = return ()
                   | otherwise          =
-                      do putStrLn $ "deleteTexture " ++ show tex
+                      do -- putStrLn $ "deleteTexture " ++ show tex
                          deleteObjectNames [tex]
 
--- Show a is just for debugging.  Can remove later.
-
-fileMungeIn :: Show a =>
+fileMungeIn :: -- Show a =>   -- for debugging
                (FilePath -> IO (Either String a)) -> Sink a -> a -> In a
 fileMungeIn munge free start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
