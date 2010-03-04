@@ -17,7 +17,7 @@ module Interface.TV.Gtk
   ( -- * TV type specializations
     In, Out, GTV, gtv, runGTV, runOut, runOutIO
     -- * UI primitives
-  , R, sliderRIn, sliderIIn, clockIn, fileNameIn, renderOut
+  , R, sliderRIn, sliderIIn, clockIn, rateIn, fileNameIn, renderOut
   , emptyTexture, textureIsEmpty, textureIn
   , module Interface.TV
   ) where
@@ -323,7 +323,6 @@ clockDtI period = primMkI $ \ refresh ->
 -- running when gtk starts up again.  Particularly useful in ghci, where
 -- restarting gtk is commonplace.
 
-
 -- | A clock that updates every 1/60 second
 clockIn :: In R
 clockIn = clockDtI (1/60)
@@ -331,6 +330,38 @@ clockIn = clockDtI (1/60)
 -- Get the time since midnight, in seconds
 time :: IO R
 time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
+
+
+-- | Rate slider
+rateDtIn :: R -> (R,R) -> R -> In R
+rateDtIn period ran v0 = primMkI $ \ refresh ->
+  do refT  <- time >>= newIORef
+     refX  <- newIORef 0
+     (w,getV,cleanV) <- mkI' (return ())
+     timeout <- timeoutAddFull (refresh >> return True)
+                  priorityDefaultIdle (round (period * 1000))
+     let getX = do v <- getV
+                   prevX <- readIORef refX
+                   if (v /= 0) then
+                     do t <- time
+                        prevT <- readIORef refT
+                        let x = prevX + (t - prevT) * v
+                        writeIORef refT t
+                        writeIORef refX x
+                        return x
+                    else
+                       return prevX
+     return (w, getX, timeoutRemove timeout >> cleanV)
+ where
+   MkI mkI' = input $ sliderRIn ran v0
+
+-- | Rate slider.  Updates result (integral) 60 times per second.
+rateIn :: (R,R) -> R -> In R
+rateIn = rateDtIn (1/60)
+
+
+-- Better: getX changes no state.  Instead, update refT & refX when slider changes.
+-- In any case, only invoke refresh when the rate is nonzero
 
 
 {--------------------------------------------------------------------
