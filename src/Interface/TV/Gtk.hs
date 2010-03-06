@@ -1,4 +1,6 @@
-{-# LANGUAGE RecursiveDo, MultiParamTypeClasses, ScopedTypeVariables #-}
+{-# LANGUAGE RecursiveDo, MultiParamTypeClasses, ScopedTypeVariables
+           , TypeFamilies
+  #-}
 {-# OPTIONS_GHC -Wall #-}
 -- {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}   -- TEMP
 ----------------------------------------------------------------------
@@ -17,7 +19,9 @@ module Interface.TV.Gtk
   ( -- * TV type specializations
     In, Out, GTV, gtv, runGTV, runOut, runOutIO
     -- * UI primitives
-  , R, sliderRIn, sliderIIn, clockIn, rateIn, fileNameIn, renderOut
+  , R, sliderRIn, sliderIIn, clockIn
+  , rateSliderIn, integralIn
+  , fileNameIn, renderOut
   , emptyTexture, textureIsEmpty, textureIn
   , module Interface.TV
   ) where
@@ -42,6 +46,9 @@ import Data.Title
 import Data.Pair
 import Data.Lambda
 import Control.Compose (ToOI(..),Cofunctor(..),Flip(..))
+
+-- From vector-space
+import Data.VectorSpace
 
 import Interface.TV
 
@@ -332,20 +339,30 @@ time :: IO R
 time = (fromRational . toRational . utctDayTime) <$> getCurrentTime
 
 
--- | Rate slider
-rateDtIn :: R -> (R,R) -> R -> In R
-rateDtIn period ran v0 = primMkI $ \ refresh ->
+-- | Rate slider.  Convenience function built from 'sliderRin' and 'integralDtIn'.
+rateSliderDtIn :: R -> (R,R) -> R -> In R
+rateSliderDtIn period = (result.result) (integralDtIn period) sliderRIn
+
+-- | Rate slider.  Updates result (integral) 60 times per second.
+-- Convenience function built from 'sliderRin' and 'integralIn'.
+rateSliderIn :: (R,R) -> R -> In R
+rateSliderIn = rateSliderDtIn (1/60)
+
+-- | Integral of an input, with given update interval (in seconds)
+integralDtIn :: (VectorSpace v, Eq v, Scalar v ~ Float) =>
+                R -> In v -> In v
+integralDtIn period inp = primMkI $ \ refresh ->
   do refT  <- time >>= newIORef
-     refX  <- newIORef 0
+     refX  <- newIORef zeroV
      (w,getV,cleanV) <- mkI' (return ())
      timeout <- timeoutAddFull (refresh >> return True)
                   priorityDefaultIdle (round (period * 1000))
      let getX = do v <- getV
                    prevX <- readIORef refX
-                   if (v /= 0) then
+                   if (v /= zeroV) then
                      do t <- time
                         prevT <- readIORef refT
-                        let x = prevX + (t - prevT) * v
+                        let x = prevX ^+^ (t - prevT) *^ v
                         writeIORef refT t
                         writeIORef refX x
                         return x
@@ -353,11 +370,12 @@ rateDtIn period ran v0 = primMkI $ \ refresh ->
                        return prevX
      return (w, getX, timeoutRemove timeout >> cleanV)
  where
-   MkI mkI' = input $ sliderRIn ran v0
+   MkI mkI' = input inp
 
--- | Rate slider.  Updates result (integral) 60 times per second.
-rateIn :: (R,R) -> R -> In R
-rateIn = rateDtIn (1/60)
+-- | Integral of an input.  Updates result (integral) 60 times per second.
+integralIn :: (VectorSpace v, Eq v, Scalar v ~ Float) =>
+              In v -> In v
+integralIn = integralDtIn (1/60)
 
 
 -- Better: getX changes no state.  Instead, update refT & refX when slider changes.
