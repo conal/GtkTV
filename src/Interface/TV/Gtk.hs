@@ -250,8 +250,8 @@ instance Lambda MkI MkO where
     mdo box  <- boxNew Vertical False 0  -- 10?
         reff <- newIORef (error "mkLambda: no function yet")
         let update = do f <- readIORef reff
-                        a <- geta   -- note loop
-                        snkb (f a)
+                        a <- geta   -- forward ref geta
+                        snkb (f a)  -- forward ref snkb
         (wa,geta,cleana) <- ia update
         (wb,snkb,cleanb) <- ob
         -- set box [ containerChild := wa , containerChild := wb ]
@@ -372,14 +372,18 @@ integralDtIn period inp = primMkI $ \ refresh ->
  where
    MkI mkI' = input inp
 
+-- Better: getX changes no state.  Instead, update refT & refX when slider changes.
+-- In any case, only invoke refresh when the rate is nonzero
+
 -- | Integral of an input.  Updates result (integral) 60 times per second.
 integralIn :: (VectorSpace v, Eq v, Scalar v ~ Float) =>
               In v -> In v
 integralIn = integralDtIn (1/60)
 
 
--- Better: getX changes no state.  Instead, update refT & refX when slider changes.
--- In any case, only invoke refresh when the rate is nonzero
+-- CONCERN: integration can apply to pair-valued inputs (e.g., constructed
+-- by 'pair'), but the DeepArrow dissecting operations will not be able to
+-- split apart the (pair-valued) integral input.
 
 
 {--------------------------------------------------------------------
@@ -433,7 +437,7 @@ renderOut = primMkO $
      return (toWidget canvas, display, return ())
 
 flipY :: Action
-flipY = scale (1 :: GLfloat) (-1) 1
+flipY = scale 1 (-1 :: GLfloat) 1
 
 -- Is there another way to flip Y?
 
@@ -485,24 +489,33 @@ deleteTexture tex | textureIsEmpty tex = return ()
                       do -- putStrLn $ "deleteTexture " ++ show tex
                          deleteObjectNames [tex]
 
+-- Test hack
+
 fileMungeIn :: -- Show a =>   -- for debugging
                (FilePath -> IO (Either String a)) -> Sink a -> a -> In a
 fileMungeIn munge free start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
      current <- newIORef start
-     onCurrentFolderChanged w $
-       do mb <- fileChooserGetFilename w
+     -- onCurrentFolderChanged w $ putStrLn "onCurrentFolderChanged"
+     -- onFileActivated w $ putStrLn "onFileActivated"
+     -- I'm changing the value on preview.  TODO: change back if the
+     -- user cancels.
+     onUpdatePreview w $
+       do -- putStrLn "onUpdatePreview"
+          mb <- fileChooserGetFilename w
           case mb of
             Nothing -> return ()
             Just path ->
               do e <- munge path
                  case e of
-                   Left err -> putStrLn $ "fileMungeIn error: " ++ err
+                   Left   _ -> return ()
+                   -- Left err -> putStrLn $ "fileMungeIn error: " ++ err
                    Right a  -> do readIORef current >>= free
                                   writeIORef current a
                                   -- putStrLn $ "fileMungeIn: new value " ++ show a
                                   refresh
      return (toWidget w, readIORef current, return ())
+
 
 -- TODO: Replace the error message with a GUI version.
 
@@ -511,7 +524,3 @@ fileMungeIn munge free start = primMkI $ \ refresh ->
 
 -- I'd like to move to a consistently GC'd setting, in which textures,
 -- shaders, etc are GC'd.  In that case, what keeps GPU resources alive?
-
-
--- z1 :: IO (Either String TextureObject)
--- z1 = loadTex "/Users/conal/post-nvc/marshall-rosenberg.jpg"
