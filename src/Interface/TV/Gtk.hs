@@ -489,8 +489,6 @@ deleteTexture tex | textureIsEmpty tex = return ()
                       do -- putStrLn $ "deleteTexture " ++ show tex
                          deleteObjectNames [tex]
 
--- Test hack
-
 fileMungeIn :: -- Show a =>   -- for debugging
                (FilePath -> IO (Either String a)) -> Sink a -> a -> In a
 fileMungeIn munge free start = primMkI $ \ refresh ->
