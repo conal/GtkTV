@@ -14,7 +14,7 @@
 
 import Control.Arrow ((&&&))
 
-import Interface.TV.Gtk
+import Interface.TV.Gtk2
 import Control.Arrow.DeepArrow
 import Data.FunArr
 
@@ -220,3 +220,6 @@ tv12 = result dupA $$ tv8
 
 tv13 :: GTV (TextureObject -> Action)
 tv13 = tv (lambda textureIn renderOut) renderTexture
+
+tv14 :: GTV (R -> R)
+tv14 = tv (lambda (title "rate" $ integralIn $ sliderRIn (-10,10) 0) defaultOut) id

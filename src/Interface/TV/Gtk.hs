@@ -41,14 +41,14 @@ import Graphics.Rendering.OpenGL hiding (Sink,get)
 import Data.Bitmap.OpenGL
 import Codec.Image.STB
 
+-- From vector-space
+import Data.VectorSpace
+
 -- From TypeCompose
 import Data.Title
 import Data.Pair
 import Data.Lambda
 import Control.Compose (ToOI(..),Cofunctor(..),Flip(..))
-
--- From vector-space
-import Data.VectorSpace
 
 import Interface.TV
 
@@ -107,16 +107,14 @@ type MkO' a = IO (Widget, Sink a, Action)
 -- propagated by the other combinators.
 
 instance Functor MkI where
-  fmap f (MkI h) = MkI h'
+  fmap f (MkI h) = MkI ((result.fmap) f' h)
     where
-      h' refresh = do (wid,poll,clean) <- h refresh
-                      return (wid, fmap f poll, clean)
+      f' (wid,poll,clean) = (wid, fmap f poll, clean)
 
 instance Cofunctor MkO where
-  cofmap f (MkO io) = MkO io'
+  cofmap f (MkO io) = MkO (fmap f' io)
    where
-     io' = do (wid,sink,cleanup) <- io
-              return (wid,sink . f,cleanup)
+     f' (wid,sink,cleanup) = (wid,sink . f,cleanup)
 
 -- Note that Functor & Cofunctor are isomorphic to a standard form.
 -- Consider redefining MkI' and MkO' accordingly.  See how other instances
@@ -212,10 +210,10 @@ boxer :: BoxClass box => (a -> b -> IO box) -> (a -> b -> IO Box)
 boxer = (result.result.fmap) toBox
 
 instance Pair MkI where
-  pair (MkI ia) (MkI ob) = MkI $ \ refresh ->
+  pair (MkI ia) (MkI ib) = MkI $ \ refresh ->
     do box <- boxNew Horizontal False 10
        (wa,geta,cleana) <- ia refresh
-       (wb,getb,cleanb) <- ob refresh
+       (wb,getb,cleanb) <- ib refresh
        set box [ containerChild := wa , containerChild := wb ]
        return (toWidget box, liftA2 (,) geta getb, cleana >> cleanb)
 
@@ -249,10 +247,10 @@ instance Lambda MkI MkO where
   lambda (MkI ia) (MkO ob) = MkO $
     mdo box  <- boxNew Vertical False 0  -- 10?
         reff <- newIORef (error "mkLambda: no function yet")
-        let update = do f <- readIORef reff
-                        a <- geta   -- forward ref geta
-                        snkb (f a)  -- forward ref snkb
-        (wa,geta,cleana) <- ia update
+        let refresh = do f <- readIORef reff
+                         a <- geta   -- forward ref geta
+                         snkb (f a)  -- forward ref snkb
+        (wa,geta,cleana) <- ia refresh
         (wb,snkb,cleanb) <- ob
         -- set box [ containerChild := wa , containerChild := wb ]
         -- Hack: stretch output but not input.  Really I want to choose
@@ -260,7 +258,7 @@ instance Lambda MkI MkO where
         boxPackStart box wa PackNatural 0
         boxPackStart box wb PackGrow    0
         return ( toWidget box
-               , \ f -> writeIORef reff f >> update
+               , \ f -> writeIORef reff f >> refresh
                , cleana >> cleanb)
 
 
@@ -278,7 +276,7 @@ type R = Float
 -- being float on the GLSL side.
 
 sliderRIn :: (R,R) -> R -> In R
-sliderRIn = sliderGIn realToFrac realToFrac 0.01 5
+sliderRIn = sliderGIn realToFrac realToFrac 0.005 5
 
 sliderIIn :: (Int,Int) -> Int -> In Int
 sliderIIn = sliderGIn fromIntegral round 1 0
