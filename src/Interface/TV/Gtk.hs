@@ -95,6 +95,9 @@ newtype MkI  a = MkI { unMkI :: MkI' a }
 inMkI :: (MkI' a -> MkI' b) -> (MkI a -> MkI b)
 inMkI = unMkI ~> MkI
 
+inMkI2 :: (MkI' a -> MkI' b -> MkI' c) -> (MkI a -> MkI b -> MkI c)
+inMkI2 = unMkI ~> inMkI
+
 -- Representation type for 'MkI'.  Takes a change call-back and produces a widget, a
 -- polling operation and a termination clean-up action.
 type MkI' a = Action -> IO (Widget, IO a, Action)
@@ -105,9 +108,17 @@ newtype MkO a = MkO { unMkO :: MkO' a }
 inMkO :: (MkO' a -> MkO' b) -> (MkO a -> MkO b)
 inMkO = unMkO ~> MkO
 
+inMkO2 :: (MkO' a -> MkO' b -> MkO' c) -> (MkO a -> MkO b -> MkO c)
+inMkO2 = unMkO ~> inMkO
+
 -- Representation type for 'MkO'.  Produce a widget, a way to send it new
 -- info to display, and a termination clean-up action.
 type MkO' a = IO (Widget, Sink a, Action)
+
+
+{--------------------------------------------------------------------
+    Instances
+--------------------------------------------------------------------}
 
 -- Currently, the clean-up actions are created only by clockDtI, and just
 -- propagated by the other combinators.
@@ -148,6 +159,63 @@ instance CommonOuts MkO where
     do w <- checkButtonNew
        return (toWidget w, toggleButtonSetActive w, return ())
 
+instance Pair MkI where
+  -- pair (MkI ia) (MkI ib) = MkI $ \ refresh ->
+  pair = inMkI2 $ \ ia ib -> \ refresh ->
+    do box <- boxNew Horizontal False 10
+       (wa,geta,cleana) <- ia refresh
+       (wb,getb,cleanb) <- ib refresh
+       set box [ containerChild := wa , containerChild := wb ]
+       return (toWidget box, liftA2 (,) geta getb, cleana >> cleanb)
+
+instance Pair MkO where
+  pair = inMkO2 $ \ oa ob ->
+    do box <- boxNew Horizontal False 10
+       (wa,snka,cleana) <- oa
+       (wb,snkb,cleanb) <- ob
+       set box [ containerChild := wa , containerChild := wb ]
+       return (toWidget box, snka >+> snkb, cleana >> cleanb)
+
+instance Title_f MkI where
+  title_f str = inMkI $ \ ia -> \ refresh ->
+    do (widget,geta,cleana) <- ia refresh
+       frame  <- frameNew
+       set frame [ frameLabel      := str
+                 -- , frameShadowType := ShadowEtchedOut
+                 , containerChild  := widget ]
+       return (toWidget frame, geta, cleana)
+
+instance Title_f MkO where
+  title_f str = inMkO $ \ oa ->
+   do (widget,sink,clean) <- oa
+      frame  <- frameNew
+      set frame [ frameLabel      := str
+                -- , frameShadowType := ShadowEtchedOut
+                , containerChild  := widget ]
+      return (toWidget frame, sink, clean)
+
+instance Lambda MkI MkO where
+  lambda = (unMkI ~> unMkO ~> MkO) $ \ ia ob ->
+    mdo box  <- boxNew Vertical False 0  -- 10?
+        reff <- newIORef (error "mkLambda: no function yet")
+        let refresh = do f <- readIORef reff
+                         a <- geta   -- forward ref geta
+                         snkb (f a)  -- forward ref snkb
+        (wa,geta,cleana) <- ia refresh
+        (wb,snkb,cleanb) <- ob
+        -- set box [ containerChild := wa , containerChild := wb ]
+        -- Hack: stretch output but not input.  Really I want to choose
+        -- per widget and propagate upward.
+        boxPackStart box wa PackNatural 0
+        boxPackStart box wb PackGrow    0
+        return ( toWidget box
+               , \ f -> writeIORef reff f >> refresh
+               , cleana >> cleanb)
+
+
+{--------------------------------------------------------------------
+    Execution
+--------------------------------------------------------------------}
 
 runMkO :: String -> MkO a -> a -> Action
 runMkO = (result.result.argument) return runMkOIO
@@ -196,7 +264,6 @@ runOut = (result.result.argument) return runOutIO
     UI primitives
 --------------------------------------------------------------------}
 
-
 data Orient = Horizontal | Vertical deriving (Read,Show)
 
 boxNew :: Orient -> Bool -> Int -> IO Box
@@ -205,59 +272,6 @@ boxNew Horizontal = boxer hBoxNew
 
 boxer :: BoxClass box => (a -> b -> IO box) -> (a -> b -> IO Box)
 boxer = (result.result.fmap) toBox
-
-instance Pair MkI where
-  pair (MkI ia) (MkI ib) = MkI $ \ refresh ->
-    do box <- boxNew Horizontal False 10
-       (wa,geta,cleana) <- ia refresh
-       (wb,getb,cleanb) <- ib refresh
-       set box [ containerChild := wa , containerChild := wb ]
-       return (toWidget box, liftA2 (,) geta getb, cleana >> cleanb)
-
-instance Pair MkO where
-  pair (MkO oa) (MkO ob) = MkO $
-    do box <- boxNew Horizontal False 10
-       (wa,snka,cleana) <- oa
-       (wb,snkb,cleanb) <- ob
-       set box [ containerChild := wa , containerChild := wb ]
-       return (toWidget box, snka >+> snkb, cleana >> cleanb)
-
-instance Title_f MkI where
-  title_f str (MkI ia) = MkI $ \ refresh ->
-    do (widget,geta,cleana) <- ia refresh
-       frame  <- frameNew
-       set frame [ frameLabel      := str
-                 -- , frameShadowType := ShadowEtchedOut
-                 , containerChild  := widget ]
-       return (toWidget frame, geta, cleana)
-
-instance Title_f MkO where
-  title_f str (MkO oa) = MkO $
-   do (widget,sink,clean) <- oa
-      frame  <- frameNew
-      set frame [ frameLabel      := str
-                -- , frameShadowType := ShadowEtchedOut
-                , containerChild  := widget ]
-      return (toWidget frame, sink, clean)
-
-instance Lambda MkI MkO where
-  lambda (MkI ia) (MkO ob) = MkO $
-    mdo box  <- boxNew Vertical False 0  -- 10?
-        reff <- newIORef (error "mkLambda: no function yet")
-        let refresh = do f <- readIORef reff
-                         a <- geta   -- forward ref geta
-                         snkb (f a)  -- forward ref snkb
-        (wa,geta,cleana) <- ia refresh
-        (wb,snkb,cleanb) <- ob
-        -- set box [ containerChild := wa , containerChild := wb ]
-        -- Hack: stretch output but not input.  Really I want to choose
-        -- per widget and propagate upward.
-        boxPackStart box wa PackNatural 0
-        boxPackStart box wb PackGrow    0
-        return ( toWidget box
-               , \ f -> writeIORef reff f >> refresh
-               , cleana >> cleanb)
-
 
 primMkI :: MkI' a -> In a
 primMkI = iPrim . MkI
