@@ -90,14 +90,20 @@ infixl 1 >+>  -- first guess
 --------------------------------------------------------------------}
 
 -- Make a input UI.
-newtype MkI  a = MkI (MkI' a)
+newtype MkI  a = MkI { unMkI :: MkI' a }
+
+inMkI :: (MkI' a -> MkI' b) -> (MkI a -> MkI b)
+inMkI = unMkI ~> MkI
 
 -- Representation type for 'MkI'.  Takes a change call-back and produces a widget, a
 -- polling operation and a termination clean-up action.
 type MkI' a = Action -> IO (Widget, IO a, Action)
 
 -- Make an output UI.
-newtype MkO a = MkO (MkO' a)
+newtype MkO a = MkO { unMkO :: MkO' a }
+
+inMkO :: (MkO' a -> MkO' b) -> (MkO a -> MkO b)
+inMkO = unMkO ~> MkO
 
 -- Representation type for 'MkO'.  Produce a widget, a way to send it new
 -- info to display, and a termination clean-up action.
@@ -107,12 +113,12 @@ type MkO' a = IO (Widget, Sink a, Action)
 -- propagated by the other combinators.
 
 instance Functor MkI where
-  fmap f (MkI h) = MkI ((result.fmap) f' h)
+  fmap f = inMkI ((result.fmap) f')
     where
       f' (wid,poll,clean) = (wid, fmap f poll, clean)
 
 instance Cofunctor MkO where
-  cofmap f (MkO io) = MkO (fmap f' io)
+  cofmap f = inMkO (fmap f')
    where
      f' (wid,sink,cleanup) = (wid,sink . f,cleanup)
 
@@ -142,15 +148,6 @@ instance CommonOuts MkO where
     do w <- checkButtonNew
        return (toWidget w, toggleButtonSetActive w, return ())
 
-
--- | Add post-processing.  (Could use 'fmap' instead, but 'result' is more
--- specifically typed.)
-result :: (b -> b') -> ((a -> b) -> (a -> b'))
-result = (.)
-
--- | Add pre-processing.
-argument :: (a' -> a) -> ((a -> b) -> (a' -> b))
-argument = flip (.)
 
 runMkO :: String -> MkO a -> a -> Action
 runMkO = (result.result.argument) return runMkOIO
@@ -520,3 +517,22 @@ fileMungeIn munge free start = primMkI $ \ refresh ->
 
 -- I'd like to move to a consistently GC'd setting, in which textures,
 -- shaders, etc are GC'd.  In that case, what keeps GPU resources alive?
+
+{--------------------------------------------------------------------
+    Misc
+--------------------------------------------------------------------}
+
+
+-- | Add post-processing.  (Could use 'fmap' instead, but 'result' is more
+-- specifically typed.)
+result :: (b -> b') -> ((a -> b) -> (a -> b'))
+result = (.)
+
+-- | Add pre-processing.
+argument :: (a' -> a) -> ((a -> b) -> (a' -> b))
+argument = flip (.)
+
+infixr 1 ~>
+-- | Add pre- and post processing
+(~>) :: (a' -> a) -> (b -> b') -> ((a -> b) -> (a' -> b'))
+(f ~> h) g = h . g . f
