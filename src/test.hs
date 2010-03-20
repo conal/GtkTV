@@ -14,7 +14,7 @@
 
 import Control.Arrow ((&&&))
 
-import Interface.TV.Gtk
+import Interface.TV.Gtk2
 import Control.Arrow.DeepArrow
 import Data.FunArr
 

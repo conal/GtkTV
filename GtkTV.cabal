@@ -29,7 +29,7 @@ Package-Url:         http://code.haskell.org/~conal/code/GtkTV
 Library
   hs-Source-Dirs:      src
   Extensions:
-  Build-Depends:       base<5, time, gtk, TypeCompose>=0.6.7, TV, vector-space
+  Build-Depends:       base<5, time, gtk, TypeCompose>=0.7, TV, vector-space
                      , OpenGL, gtkglext, bitmap, bitmap-opengl, stb-image
   Exposed-Modules:
                        Interface.TV.Gtk

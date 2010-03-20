@@ -48,7 +48,7 @@ import Data.VectorSpace
 import Data.Title
 import Data.Pair
 import Data.Lambda
-import Control.Compose (ToOI(..),Cofunctor(..),Flip(..))
+import Control.Compose (ToOI(..),Cofunctor(..),Flip(..),result,argument,(~>))
 
 import Interface.TV
 
@@ -67,6 +67,10 @@ gtv = tv
 -- | Type specialization of 'runTV'
 runGTV :: GTV a -> IO ()
 runGTV = runTV
+
+-- Equivalently:
+-- 
+--   runGTV :: RunTV MkI MkO
 
 
 {--------------------------------------------------------------------
@@ -353,7 +357,7 @@ rateSliderDtIn :: R -> (R,R) -> R -> In R
 rateSliderDtIn period = (result.result) (integralDtIn period) sliderRIn
 
 -- | Rate slider.  Updates result (integral) 60 times per second.
--- Convenience function built from 'sliderRin' and 'integralIn'.
+-- Specialization of 'rateSliderDtIn'.
 rateSliderIn :: (R,R) -> R -> In R
 rateSliderIn = rateSliderDtIn (1/60)
 
@@ -532,21 +536,3 @@ fileMungeIn munge free start = primMkI $ \ refresh ->
 -- I'd like to move to a consistently GC'd setting, in which textures,
 -- shaders, etc are GC'd.  In that case, what keeps GPU resources alive?
 
-{--------------------------------------------------------------------
-    Misc
---------------------------------------------------------------------}
-
-
--- | Add post-processing.  (Could use 'fmap' instead, but 'result' is more
--- specifically typed.)
-result :: (b -> b') -> ((a -> b) -> (a -> b'))
-result = (.)
-
--- | Add pre-processing.
-argument :: (a' -> a) -> ((a -> b) -> (a' -> b))
-argument = flip (.)
-
-infixr 1 ~>
--- | Add pre- and post processing
-(~>) :: (a' -> a) -> (b -> b') -> ((a -> b) -> (a' -> b'))
-(f ~> h) g = h . g . f
