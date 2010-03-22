@@ -26,7 +26,7 @@ module Interface.TV.Gtk
   , module Interface.TV
   ) where
 
-import Control.Applicative (liftA2,(<$>))
+import Control.Applicative (liftA2,(<$>),(<*>))
 import Control.Monad (when)
 import Data.IORef
 import Data.Maybe (fromMaybe)
@@ -202,9 +202,7 @@ instance Lambda MkI MkO where
   lambda = (unMkI ~> unMkO ~> MkO) $ \ ia ob ->
     mdo box  <- boxNew Vertical False 0  -- 10?
         reff <- newIORef (error "mkLambda: no function yet")
-        let refresh = do f <- readIORef reff
-                         a <- geta   -- forward ref geta
-                         snkb (f a)  -- forward ref snkb
+        let refresh = readIORef reff <*> geta >>= snkb
         (wa,geta,cleana) <- ia refresh
         (wb,snkb,cleanb) <- ob
         -- set box [ containerChild := wa , containerChild := wb ]

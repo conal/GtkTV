@@ -272,10 +272,6 @@ instance Lambda MkI MkO where
        (wa,geta,cleana,installa) <- ia
        (wb,snkb,cleanb         ) <- ob
        let refresh = readIORef reff <*> geta >>= snkb
-                     -- do f <- readIORef reff
-                     --    a <- geta
-                     --    snkb (f a)
-                      
        installa refresh
        -- set box [ containerChild := wa , containerChild := wb ]
        -- Hack: stretch output but not input.  Really I want to choose
