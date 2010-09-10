@@ -14,7 +14,7 @@
 
 import Control.Arrow ((&&&))
 
-import Interface.TV.Gtk        -- or Gtk2
+import Interface.TV.Gtk     -- or Gtk2
 import Control.Arrow.DeepArrow
 import Data.FunArr
 
@@ -75,7 +75,8 @@ o6 = lambda i1 $ lambda i2 $ stringOut
 tv6 :: GTV (R -> Bool -> String)
 tv6 = tv (title "currying" o6)  (curry show)
 
--- t6 = runOut "currying" o6  (\ a b -> show (a,b))
+tv6' :: GTV ((R, Bool) -> String)
+tv6' = uncurryA $$ tv6
 
 t7 :: Action
 t7 = testI $ sliderIIn (0,5) 3 
