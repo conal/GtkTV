@@ -295,7 +295,7 @@ runMkO = (result.result.argument) return runMkOIO
 
 runMkOIO :: String -> MkO a -> IO a -> Action
 runMkOIO name (MkO mko') mkA = do
-  initGUI
+  forget initGUI
   (wid,sink,cleanup) <- mko'
   window <- windowNew
   set window [ windowDefaultWidth   := 200

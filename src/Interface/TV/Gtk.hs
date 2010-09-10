@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, MultiParamTypeClasses, ScopedTypeVariables
+{-# LANGUAGE DoRec, MultiParamTypeClasses, ScopedTypeVariables
            , TypeFamilies
   #-}
 {-# OPTIONS_GHC -Wall #-}
@@ -200,19 +200,19 @@ instance Title_f MkO where
 
 instance Lambda MkI MkO where
   lambda = (unMkI ~> unMkO ~> MkO) $ \ ia ob ->
-    mdo box  <- boxNew Vertical False 0  -- 10?
-        reff <- newIORef (error "mkLambda: no function yet")
-        let refresh = readIORef reff <*> geta >>= snkb
-        (wa,geta,cleana) <- ia refresh
-        (wb,snkb,cleanb) <- ob
-        -- set box [ containerChild := wa , containerChild := wb ]
-        -- Hack: stretch output but not input.  Really I want to choose
-        -- per widget and propagate upward.
-        boxPackStart box wa PackNatural 0
-        boxPackStart box wb PackGrow    0
-        return ( toWidget box
-               , \ f -> writeIORef reff f >> refresh
-               , cleana >> cleanb)
+    do box  <- boxNew Vertical False 0  -- 10?
+       reff <- newIORef (error "mkLambda: no function yet")
+       rec let refresh = readIORef reff <*> geta >>= snkb
+           (wa,geta,cleana) <- ia refresh
+           (wb,snkb,cleanb) <- ob
+       -- set box [ containerChild := wa , containerChild := wb ]
+       -- Hack: stretch output but not input.  Really I want to choose
+       -- per widget and propagate upward.
+       boxPackStart box wa PackNatural 0
+       boxPackStart box wb PackGrow    0
+       return ( toWidget box
+              , \ f -> writeIORef reff f >> refresh
+              , cleana >> cleanb)
 
 
 {--------------------------------------------------------------------

@@ -33,7 +33,10 @@ Library
                      , OpenGL, gtkglext, bitmap, bitmap-opengl, stb-image
   Exposed-Modules:
                        Interface.TV.Gtk
+                       Interface.TV.Gtk2
   ghc-options:         -Wall
+
+-- I'll keep either Gtk or Gtk2 and drop the other (maybe renaming Gtk2 to Gtk)
 
 -- The dependence on OpenGL, gtkglext etc is a bit unfortunate.  Maybe
 -- factor out the GL stuff to another package.
