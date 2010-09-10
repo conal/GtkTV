@@ -26,7 +26,7 @@ module Interface.TV.Gtk
   , module Interface.TV
   ) where
 
-import Control.Applicative (liftA2,(<$>),(<*>))
+import Control.Applicative (liftA2,(<$>),(<*>),(<$))
 import Control.Monad (when)
 import Data.IORef
 import Data.Maybe (fromMaybe)
@@ -145,13 +145,13 @@ instance CommonIns MkI where
   getString start = MkI $ \ refresh ->
     do entry <- entryNew
        entrySetText entry start
-       onEntryActivate entry refresh
+       forget $ onEntryActivate entry refresh
        return (toWidget entry, entryGetText entry, return ())
   getRead = getReadF  -- thanks to MkI Functor
   getBool start = MkI $ \ refresh ->
     do w <- checkButtonNew
        toggleButtonSetActive w start
-       onToggled w refresh
+       forget $ onToggled w refresh
        return (toWidget w, toggleButtonGetActive w, return ())
 
 instance CommonOuts MkO where
@@ -227,7 +227,7 @@ runMkO = (result.result.argument) return runMkOIO
 
 runMkOIO :: String -> MkO a -> IO a -> Action
 runMkOIO name (MkO mko') mkA = do
-  initGUI
+  forget $ initGUI
   (wid,sink,cleanup) <- mko'
   window <- windowNew
   set window [ windowDefaultWidth   := 200
@@ -237,7 +237,7 @@ runMkOIO name (MkO mko') mkA = do
           -- , windowFocusOnMap     := True       -- helpful?
              , windowTitle          := name
              ]
-  onDestroy window (cleanup >> mainQuit)
+  forget $ onDestroy window (cleanup >> mainQuit)
   widgetShowAll window
   -- Initial sink.  Must come after show-all for the GLDrawingArea.
   mkA >>= sink
@@ -315,7 +315,7 @@ sliderGIn toD fromD step digits
                    do refresh
                       writeIORef oldRef new
      -- Unlike wxHaskell, I guess call-backs aren't attributes in gtk2hs.
-     afterRangeChangeValue w (\ _ x -> changeTo (fromD x) >> return False)
+     forget $ afterRangeChangeValue w (\ _ x -> changeTo (fromD x) >> return False)
      -- TODO: experiment with return False vs True
      return (toWidget w, getter, return ())
 
@@ -410,14 +410,14 @@ mkCanvas =
 -- Intended as an implementation substrate for functional graphics. 
 renderOut :: Out Action
 renderOut = primMkO $
-  do initGL
+  do forget $ initGL
      canvas <- mkCanvas
      widgetSetSizeRequest canvas 300 300
      -- Initialise some GL setting just before the canvas first gets shown
      -- (We can't initialise these things earlier since the GL resources that
      -- we are using wouldn't have been set up yet)
      -- TODO experiment with moving some of these steps.
-     onRealize canvas $ withGLDrawingArea canvas $ const $
+     forget $ onRealize canvas $ withGLDrawingArea canvas $ const $
        do -- setupMatrices  -- do elsewhere, e.g., runSurface
           depthFunc  $= Just Less
           drawBuffer $= BackBuffers
@@ -436,7 +436,7 @@ renderOut = primMkO $
                  glDrawableSwapBuffers glwindow
                  writeIORef drawRef draw
      -- Sync canvas size with and use draw action
-     onExpose canvas $ \_ -> 
+     forget $ onExpose canvas $ \_ -> 
        do (w',h') <- widgetGetSize canvas
           let w = fromIntegral w' :: GLsizei
               h = fromIntegral h'
@@ -485,8 +485,8 @@ loadTexture path =
 fileNameIn :: FilePath -> In FilePath
 fileNameIn start = primMkI $ \ refresh ->
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
-     fileChooserSetFilename w start
-     onCurrentFolderChanged w refresh
+     forget $ fileChooserSetFilename w start
+     forget $ onCurrentFolderChanged w refresh
      return ( toWidget w
             , fromMaybe start <$> fileChooserGetFilename w
             , return () )
@@ -509,7 +509,7 @@ fileMungeIn munge free start = primMkI $ \ refresh ->
      -- onFileActivated w $ putStrLn "onFileActivated"
      -- I'm changing the value on preview.  TODO: change back if the
      -- user cancels.
-     onUpdatePreview w $
+     forget $ onUpdatePreview w $
        do -- putStrLn "onUpdatePreview"
           mb <- fileChooserGetFilename w
           case mb of
@@ -534,3 +534,11 @@ fileMungeIn munge free start = primMkI $ \ refresh ->
 -- I'd like to move to a consistently GC'd setting, in which textures,
 -- shaders, etc are GC'd.  In that case, what keeps GPU resources alive?
 
+
+{--------------------------------------------------------------------
+    Misc
+--------------------------------------------------------------------}
+
+forget :: Functor f => f a -> f ()
+forget = (() <$)
+-- forget = fmap (const ())

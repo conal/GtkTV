@@ -26,7 +26,7 @@ module Interface.TV.Gtk2
   , module Interface.TV
   ) where
 
-import Control.Applicative (liftA2,(<$>),(<*>))
+import Control.Applicative (liftA2,(<$>),(<*>),(<$))
 import Control.Monad (when,join)
 import Data.IORef
 import Data.Maybe (fromMaybe)
@@ -190,21 +190,21 @@ instance Cofunctor MkO where
 -- Consider redefining MkI' and MkO' accordingly.  See how other instances
 -- work out.
 
-forget :: Monad m => (w -> a -> m b) -> (w -> a -> m ())
-forget = (result.result) ( >> return ())
+forget2 :: Monad m => (w -> a -> m b) -> (w -> a -> m ())
+forget2 = (result.result) ( >> return ())
 
--- forget h w a = h w a >> return ()
+-- forget2 h w a = h w a >> return ()
 
 instance CommonIns MkI where
   getString start = MkI $
     do w <- entryNew
        entrySetText w start
-       return (toWidget w, entryGetText w, return (), forget onEntryActivate w)
+       return (toWidget w, entryGetText w, return (), forget2 onEntryActivate w)
   getRead = getReadF  -- thanks to MkI Functor
   getBool start = MkI $
     do w <- checkButtonNew
        toggleButtonSetActive w start
-       return (toWidget w, toggleButtonGetActive w, return (), forget onToggled w)
+       return (toWidget w, toggleButtonGetActive w, return (), forget2 onToggled w)
 
 instance CommonOuts MkO where
   putString = MkO $
@@ -305,7 +305,7 @@ runMkOIO name (MkO mko') mkA = do
           -- , windowFocusOnMap     := True       -- helpful?
              , windowTitle          := name
              ]
-  onDestroy window (cleanup >> mainQuit)
+  forget $ onDestroy window (cleanup >> mainQuit)
   widgetShowAll window
   -- Initial sink.  Must come after show-all for the GLDrawingArea.
   mkA >>= sink
@@ -378,13 +378,13 @@ sliderGIn toD fromD step digits
      w <- hScaleNewWithRange (toD lo) (toD hi) (toD step)
      set w [ rangeValue := toD a0, scaleDigits := digits ]
      let getter = fromD <$> get w rangeValue
-         install refresh = forget afterRangeChangeValue w
+         install refresh = forget2 afterRangeChangeValue w
                              (\ _ x -> changeTo (fromD x) >> return False)
           where
             changeTo new =
               do old <- readIORef oldRef
                  when (old /= new) $
-                      do refresh
+                      do forget refresh
                          writeIORef oldRef new
      -- TODO: experiment with return False vs True
      return (toWidget w, getter, return (), install)
@@ -484,14 +484,14 @@ mkCanvas =
 -- Intended as an implementation substrate for functional graphics. 
 renderOut :: Out Action
 renderOut = primMkO $
-  do initGL
+  do forget initGL
      canvas <- mkCanvas
      widgetSetSizeRequest canvas 300 300
      -- Initialise some GL setting just before the canvas first gets shown
      -- (We can't initialise these things earlier since the GL resources that
      -- we are using wouldn't have been set up yet)
      -- TODO experiment with moving some of these steps.
-     onRealize canvas $ withGLDrawingArea canvas $ const $
+     forget $ onRealize canvas $ withGLDrawingArea canvas $ const $
        do -- setupMatrices  -- do elsewhere, e.g., runSurface
           depthFunc  $= Just Less
           drawBuffer $= BackBuffers
@@ -510,7 +510,7 @@ renderOut = primMkO $
                  glDrawableSwapBuffers glwindow
                  writeIORef drawRef draw
      -- Sync canvas size with and use draw action
-     onExpose canvas $ \_ -> 
+     forget $ onExpose canvas $ \_ -> 
        do (w',h') <- widgetGetSize canvas
           let w = fromIntegral w' :: GLsizei
               h = fromIntegral h'
@@ -559,11 +559,11 @@ loadTexture path =
 fileNameIn :: FilePath -> In FilePath
 fileNameIn start = primMkI $
   do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
-     fileChooserSetFilename w start
+     forget $ fileChooserSetFilename w start
      return ( toWidget w
             , fromMaybe start <$> fileChooserGetFilename w
             , return ()
-            , forget onCurrentFolderChanged w
+            , forget2 onCurrentFolderChanged w
             )
 
 textureIn :: In TextureObject
@@ -585,7 +585,7 @@ fileMungeIn munge free start = primMkI $
      -- I'm changing the value on preview.  TODO: change back if the
      -- user cancels.
      let install refresh =
-           forget onUpdatePreview w $
+           forget2 onUpdatePreview w $
              do -- putStrLn "onUpdatePreview"
                 mb <- fileChooserGetFilename w
                 case mb of
@@ -610,3 +610,12 @@ fileMungeIn munge free start = primMkI $
 -- I'd like to move to a consistently GC'd setting, in which textures,
 -- shaders, etc are GC'd.  In that case, what keeps GPU resources alive?
 
+
+
+{--------------------------------------------------------------------
+    Misc
+--------------------------------------------------------------------}
+
+forget :: Functor f => f a -> f ()
+forget = (() <$)
+-- forget = fmap (const ())
