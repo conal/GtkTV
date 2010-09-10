@@ -34,6 +34,7 @@ import Data.Maybe (fromMaybe)
 import Data.Time (getCurrentTime,utctDayTime)
 
 import Graphics.UI.Gtk hiding (Action)
+import qualified Graphics.UI.Gtk as Gtk
 import Graphics.UI.Gtk.OpenGL
 import qualified Graphics.Rendering.OpenGL as G
 import Graphics.Rendering.OpenGL hiding (Sink,get)
@@ -120,6 +121,11 @@ inMkO2 = unMkO ~> inMkO
 type MkO' a = IO (Widget, Sink a, Action)
 
 
+-- For temporary use, since OpenGL added a 'set' between 2.2.3.0 and 2.4.0.1
+gset :: o -> [AttrOp o] -> IO ()
+gset = Gtk.set
+
+
 {--------------------------------------------------------------------
     Instances
 --------------------------------------------------------------------}
@@ -169,7 +175,7 @@ instance Pair MkI where
     do box <- boxNew Horizontal False 10
        (wa,geta,cleana) <- ia refresh
        (wb,getb,cleanb) <- ib refresh
-       set box [ containerChild := wa , containerChild := wb ]
+       gset box [ containerChild := wa , containerChild := wb ]
        return (toWidget box, liftA2 (,) geta getb, cleana >> cleanb)
 
 instance Pair MkO where
@@ -177,25 +183,25 @@ instance Pair MkO where
     do box <- boxNew Horizontal False 10
        (wa,snka,cleana) <- oa
        (wb,snkb,cleanb) <- ob
-       set box [ containerChild := wa , containerChild := wb ]
+       gset box [ containerChild := wa , containerChild := wb ]
        return (toWidget box, snka >+> snkb, cleana >> cleanb)
 
 instance Title_f MkI where
   title_f str = inMkI $ \ ia -> \ refresh ->
     do (widget,geta,cleana) <- ia refresh
        frame  <- frameNew
-       set frame [ frameLabel      := str
-                 -- , frameShadowType := ShadowEtchedOut
-                 , containerChild  := widget ]
+       gset frame [ frameLabel      := str
+                  -- , frameShadowType := ShadowEtchedOut
+                  , containerChild  := widget ]
        return (toWidget frame, geta, cleana)
 
 instance Title_f MkO where
   title_f str = inMkO $ \ oa ->
    do (widget,sink,clean) <- oa
       frame  <- frameNew
-      set frame [ frameLabel      := str
-                -- , frameShadowType := ShadowEtchedOut
-                , containerChild  := widget ]
+      gset frame [ frameLabel      := str
+                 -- , frameShadowType := ShadowEtchedOut
+                 , containerChild  := widget ]
       return (toWidget frame, sink, clean)
 
 instance Lambda MkI MkO where
@@ -205,7 +211,7 @@ instance Lambda MkI MkO where
        rec let refresh = readIORef reff <*> geta >>= snkb
            (wa,geta,cleana) <- ia refresh
            (wb,snkb,cleanb) <- ob
-       -- set box [ containerChild := wa , containerChild := wb ]
+       -- gset box [ containerChild := wa , containerChild := wb ]
        -- Hack: stretch output but not input.  Really I want to choose
        -- per widget and propagate upward.
        boxPackStart box wa PackNatural 0
@@ -230,13 +236,13 @@ runMkOIO name (MkO mko') mkA = do
   forget $ initGUI
   (wid,sink,cleanup) <- mko'
   window <- windowNew
-  set window [ windowDefaultWidth   := 200
-          -- , windowDefaultHeight  := 200
-          -- , containerBorderWidth := 10
-             , containerChild       := wid
-          -- , windowFocusOnMap     := True       -- helpful?
-             , windowTitle          := name
-             ]
+  gset window [ windowDefaultWidth   := 200
+           -- , windowDefaultHeight  := 200
+           -- , containerBorderWidth := 10
+              , containerChild       := wid
+           -- , windowFocusOnMap     := True       -- helpful?
+              , windowTitle          := name
+              ]
   forget $ onDestroy window (cleanup >> mainQuit)
   widgetShowAll window
   -- Initial sink.  Must come after show-all for the GLDrawingArea.
@@ -307,7 +313,7 @@ sliderGIn toD fromD step digits
              (lo,hi) a0 = primMkI $ \ refresh ->
   do oldRef <- newIORef a0
      w <- hScaleNewWithRange (toD lo) (toD hi) (toD step)
-     set w [ rangeValue := toD a0, scaleDigits := digits ]
+     gset w [ rangeValue := toD a0, scaleDigits := digits ]
      let getter = fromD <$> get w rangeValue
          changeTo new =
            do old <- readIORef oldRef
