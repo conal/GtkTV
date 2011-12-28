@@ -21,9 +21,12 @@ module Interface.TV.Gtk2
     -- * UI primitives
   , R, sliderRIn, sliderIIn, clockIn
   , rateSliderIn, integralIn
-  , fileNameIn, renderOut
-  , emptyTexture, textureIsEmpty, textureIn
+  , fileNameIn
+  -- , renderOut, emptyTexture, textureIsEmpty, textureIn
   , module Interface.TV
+    -- * Extensibility
+  , Action, Sink
+  , MkI, MkI', MkO, MkO', primMkI, primMkO, forget, forget2
   ) where
 
 import Control.Applicative (liftA2,(<$>),(<*>),(<$))
@@ -35,6 +38,7 @@ import Data.Time (getCurrentTime,utctDayTime)
 
 import Graphics.UI.Gtk hiding (Action)
 import qualified Graphics.UI.Gtk as Gtk
+{-
 import Graphics.UI.Gtk.OpenGL
 import qualified Graphics.Rendering.OpenGL as G
 import Graphics.Rendering.OpenGL hiding (Sink,get)
@@ -42,6 +46,7 @@ import Graphics.Rendering.OpenGL hiding (Sink,get)
 -- For textures
 import Data.Bitmap.OpenGL
 import Codec.Image.STB
+-}
 
 -- From vector-space
 import Data.VectorSpace
@@ -50,7 +55,7 @@ import Data.VectorSpace
 import Data.Title
 import Data.Pair
 import Data.Lambda
-import Control.Compose (ToOI(..),Cofunctor(..),Flip(..))
+import Control.Compose (ToOI(..),ContraFunctor(..),Flip(..))
 
 import Interface.TV
 
@@ -179,23 +184,18 @@ instance Functor MkI where
 
 -- Better yet: tweak the representation so that Functor is derived.
 
-instance Cofunctor MkO where
-  cofmap f = inMkO (fmap f')
+instance ContraFunctor MkO where
+  contraFmap f = inMkO (fmap f')
    where
      f' (wid,sink,cleanup) = (wid, sink . f, cleanup)
 
---   cofmap f (MkO mk) = MkO (fmap f' mk)
+--   contraFmap f (MkO mk) = MkO (fmap f' mk)
 --    where
 --      f' (wid,sink,cleanup) = (wid, sink . f, cleanup)
 
--- Note that Functor & Cofunctor are isomorphic to a standard form.
+-- Note that Functor & ContraFunctor are isomorphic to a standard form.
 -- Consider redefining MkI' and MkO' accordingly.  See how other instances
 -- work out.
-
-forget2 :: Monad m => (w -> a -> m b) -> (w -> a -> m ())
-forget2 = (result.result) ( >> return ())
-
--- forget2 h w a = h w a >> return ()
 
 instance CommonIns MkI where
   getString start = MkI $
@@ -212,14 +212,10 @@ instance CommonOuts MkO where
   putString = MkO $
     do entry <- entryNew
        return (toWidget entry, entrySetText entry, return ())
-  putShow = putShowC  -- thanks to MkO Cofunctor
+  putShow = putShowC  -- thanks to MkO ContraFunctor
   putBool = MkO $
     do w <- checkButtonNew
        return (toWidget w, toggleButtonSetActive w, return ())
-
--- For temporary use, since OpenGL added a 'set' between 2.2.3.0 and 2.4.0.1
-gset :: o -> [AttrOp o] -> IO ()
-gset = Gtk.set
 
 boxed :: Orient -> Widget -> Widget -> IO Widget
 boxed o wa wb =
@@ -297,12 +293,17 @@ runMkO = (result.result.argument) return runMkOIO
 
 -- runMkO name mko = runMkOIO name mko . return
 
+-- WORKING HERE. This new order appears to break the GtkGL examples:
+-- 
+--   (<interactive>:62493): GtkGLExt-CRITICAL **:
+--   gtk_widget_get_gl_context: *** Exception: user error (makeNewGObject: object is NULL)
+
 
 runMkOIO :: String -> MkO a -> IO a -> Action
 runMkOIO name (MkO mko') mkA = do
   forget initGUI
-  (wid,sink,cleanup) <- mko'
   window <- windowNew
+  (wid,sink,cleanup) <- mko'
   gset window [ windowDefaultWidth   := 200
            -- , windowDefaultHeight  := 200
            -- , containerBorderWidth := 10
@@ -316,6 +317,33 @@ runMkOIO name (MkO mko') mkA = do
   mkA >>= sink
   mainGUI
   return ()
+
+{-
+runMkOIO :: String -> MkO a -> IO a -> Action
+runMkOIO name mko mkA = do
+  forget initGUI
+  window <- windowNew
+  wid    <- runMkOWidget mko mkA 
+  gset window [ windowDefaultWidth   := 200
+           -- , windowDefaultHeight  := 200
+           -- , containerBorderWidth := 10
+              , containerChild       := wid
+           -- , windowFocusOnMap     := True       -- helpful?
+              , windowTitle          := name
+              ]
+  forget $ onDestroy window mainQuit
+  widgetShowAll window
+  -- Initial sink.  Must come after show-all for the GLDrawingArea.
+  mainGUI
+  return ()
+
+runMkOWidget :: MkO a -> IO a -> IO Widget
+runMkOWidget (MkO mko') mkA = do
+  (wid,sink,cleanup) <- mko'
+  forget $ onDestroyEvent wid (\_ -> cleanup >> return True)
+  mkA >>= sink
+  return wid
+-}
 
 instance ToOI MkO where
   toOI mkO = Flip (runMkO "GtkTV" mkO)
@@ -475,6 +503,11 @@ integralIn = integralDtIn (1/60)
 -- by 'pair'), but the DeepArrow dissecting operations will not be able to
 -- split apart the (pair-valued) integral input.
 
+-- For temporary use, since OpenGL added a 'set' between 2.2.3.0 and 2.4.0.1
+gset :: o -> [AttrOp o] -> IO ()
+gset = Gtk.set
+
+{-
 
 {--------------------------------------------------------------------
     GtkGL stuff
@@ -559,18 +592,6 @@ loadTexture path =
 -- loadImage :: FilePath -> IO (Either String Image)
 -- makeSimpleBitmapTexture :: Image -> IO TextureObject
 
-
-
-fileNameIn :: FilePath -> In FilePath
-fileNameIn start = primMkI $
-  do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
-     forget $ fileChooserSetFilename w start
-     return ( toWidget w
-            , fromMaybe start <$> fileChooserGetFilename w
-            , return ()
-            , forget2 onCurrentFolderChanged w
-            )
-
 textureIn :: In TextureObject
 textureIn = fileMungeIn loadTexture deleteTexture emptyTexture
 
@@ -606,6 +627,19 @@ fileMungeIn munge free start = primMkI $
                                         refresh
      return (toWidget w, readIORef current, return (), install)
 
+-}
+
+
+fileNameIn :: FilePath -> In FilePath
+fileNameIn start = primMkI $
+  do w <- fileChooserButtonNew "Select file" FileChooserActionOpen
+     forget $ fileChooserSetFilename w start
+     return ( toWidget w
+            , fromMaybe start <$> fileChooserGetFilename w
+            , return ()
+            , forget2 onCurrentFolderChanged w
+            )
+
 
 -- TODO: Replace the error message with a GUI version.
 
@@ -624,3 +658,7 @@ fileMungeIn munge free start = primMkI $
 forget :: Functor f => f a -> f ()
 forget = (() <$)
 -- forget = fmap (const ())
+
+forget2 :: Monad m => (w -> a -> m b) -> (w -> a -> m ())
+forget2 = (result.result) ( >> return ())
+-- forget2 h w a = h w a >> return ()

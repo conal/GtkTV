@@ -21,9 +21,12 @@ module Interface.TV.Gtk
     -- * UI primitives
   , R, sliderRIn, sliderIIn, clockIn
   , rateSliderIn, integralIn
-  , fileNameIn, renderOut
-  , emptyTexture, textureIsEmpty, textureIn
+  , fileNameIn
+  -- , renderOut, emptyTexture, textureIsEmpty, textureIn
   , module Interface.TV
+    -- * Extensibility
+  , Action, Sink
+  , MkI, MkI', MkO, MkO', primMkI, primMkO, forget, forget2
   ) where
 
 import Control.Applicative (liftA2,(<$>),(<*>),(<$))
@@ -35,12 +38,14 @@ import Data.Time (getCurrentTime,utctDayTime)
 
 import Graphics.UI.Gtk hiding (Action)
 import qualified Graphics.UI.Gtk as Gtk
+{-
 import Graphics.UI.Gtk.OpenGL
 import qualified Graphics.Rendering.OpenGL as G
 import Graphics.Rendering.OpenGL hiding (Sink,get)
 -- For textures
 import Data.Bitmap.OpenGL
 import Codec.Image.STB
+-}
 
 -- From vector-space
 import Data.VectorSpace
@@ -49,7 +54,7 @@ import Data.VectorSpace
 import Data.Title
 import Data.Pair
 import Data.Lambda
-import Control.Compose (ToOI(..),Cofunctor(..),Flip(..),result,argument,(~>))
+import Control.Compose (ToOI(..),ContraFunctor(..),Flip(..),result,argument,(~>))
 
 import Interface.TV
 
@@ -138,12 +143,12 @@ instance Functor MkI where
     where
       f' (wid,poll,clean) = (wid, fmap f poll, clean)
 
-instance Cofunctor MkO where
-  cofmap f = inMkO (fmap f')
+instance ContraFunctor MkO where
+  contraFmap f = inMkO (fmap f')
    where
      f' (wid,sink,cleanup) = (wid,sink . f,cleanup)
 
--- Note that Functor & Cofunctor are isomorphic to a standard form.
+-- Note that Functor & ContraFunctor are isomorphic to a standard form.
 -- Consider redefining MkI' and MkO' accordingly.  See how other instances
 -- work out.
 
@@ -164,7 +169,7 @@ instance CommonOuts MkO where
   putString = MkO $
     do entry <- entryNew
        return (toWidget entry, entrySetText entry, return ())
-  putShow = putShowC  -- thanks to MkO Cofunctor
+  putShow = putShowC  -- thanks to MkO ContraFunctor
   putBool = MkO $
     do w <- checkButtonNew
        return (toWidget w, toggleButtonSetActive w, return ())
@@ -402,6 +407,8 @@ integralIn = integralDtIn (1/60)
 -- by 'pair'), but the DeepArrow dissecting operations will not be able to
 -- split apart the (pair-valued) integral input.
 
+{-
+
 
 {--------------------------------------------------------------------
     GtkGL stuff
@@ -486,6 +493,7 @@ loadTexture path =
 -- loadImage :: FilePath -> IO (Either String Image)
 -- makeSimpleBitmapTexture :: Image -> IO TextureObject
 
+-}
 
 
 fileNameIn :: FilePath -> In FilePath
@@ -496,6 +504,8 @@ fileNameIn start = primMkI $ \ refresh ->
      return ( toWidget w
             , fromMaybe start <$> fileChooserGetFilename w
             , return () )
+
+{-
 
 textureIn :: In TextureObject
 textureIn = fileMungeIn loadTexture deleteTexture emptyTexture
@@ -531,6 +541,7 @@ fileMungeIn munge free start = primMkI $ \ refresh ->
                                   refresh
      return (toWidget w, readIORef current, return ())
 
+-}
 
 -- TODO: Replace the error message with a GUI version.
 
@@ -548,3 +559,7 @@ fileMungeIn munge free start = primMkI $ \ refresh ->
 forget :: Functor f => f a -> f ()
 forget = (() <$)
 -- forget = fmap (const ())
+
+forget2 :: Monad m => (w -> a -> m b) -> (w -> a -> m ())
+forget2 = (result.result) ( >> return ())
+-- forget2 h w a = h w a >> return ()
