@@ -1,4 +1,4 @@
-{-# LANGUAGE DoRec, MultiParamTypeClasses, ScopedTypeVariables
+{-# LANGUAGE RecursiveDo, MultiParamTypeClasses, ScopedTypeVariables
            , TypeFamilies
   #-}
 {-# OPTIONS_GHC -Wall #-}
