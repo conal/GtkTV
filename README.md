@@ -1,0 +1,1 @@
+GtkTV is a very small library that extends the [TV](http://www.haskell.org/haskellwiki/TV) (tangible value) framework with graphical user interfaces, using [gtk2hs](http://www.haskell.org/haskellwiki/Gtk2Hs).
